@@ -1648,7 +1648,15 @@ command_reconcile_requests() {
         created=$((created + 1))
       else
         line=$(printf '%s\n' "$out" | grep '^refused: ' | head -1)
-        printf '%s\n' "${line:-refused: $id (owner $owner could not record the reconcile request; retry)}"
+        if [ -z "$line" ]; then
+          line=$(printf '%s\n' "$out" | sed -n 's/^fm-captain-hold: //p' | tail -1)
+          if [ -n "$line" ]; then
+            line="refused: $id (owner $owner refused: $line)"
+          else
+            line="refused: $id (owner $owner could not be reached or gave no answer; retry)"
+          fi
+        fi
+        printf '%s\n' "$line"
         skipped=$((skipped + 1))
       fi
     elif [ -z "$show" ] && [ "$owner_rc" -eq 2 ]; then

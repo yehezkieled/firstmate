@@ -345,7 +345,9 @@ show_body() { # <key>: the current body text of a ticket
 }
 
 show_field_plain() { # <key> <field>
-  shown_value "$("$SCRIPT_DIR/fm-tasks-axi.sh" show "$1" --full 2>/dev/null | sed -n "s/^  $2: //p" | head -1)"
+  local shown
+  shown=$("$SCRIPT_DIR/fm-tasks-axi.sh" show "$1" --full 2>/dev/null) || return 1
+  shown_value "$(printf '%s\n' "$shown" | sed -n "s/^  $2: //p" | head -1)"
 }
 
 # The ops hash a request id was applied with, from the marker line the owner
@@ -482,7 +484,7 @@ apply_one_op() { # <key> <request-id> <requester> <op-line-without-op=>; exit no
 }
 
 cmd_apply() {
-  local requester=unknown payload section hash receipt progress idx=0 line lock rc=0 total recorded
+  local requester=unknown payload section hash receipt progress idx=0 line lock rc=0 total recorded hold_kind
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --requester) shift; requester=${1:-unknown} ;;
@@ -538,9 +540,13 @@ cmd_apply() {
     result_line rejected "$(home_label)" "$REJECT"
     exit 2
   fi
-  if grep -q '^op=unhold' "$payload" && [ "$(show_field_plain "$PAYLOAD_KEY" hold_kind)" = captain ]; then
-    result_line rejected "$(home_label)" "a captain hold is released only by its keyed answer"
-    exit 2
+  if grep -q '^op=unhold' "$payload"; then
+    hold_kind=$(show_field_plain "$PAYLOAD_KEY" hold_kind) \
+      || { result_line pending "$(home_label)" "ticket $PAYLOAD_KEY could not be read to check its hold kind; the request is retryable"; exit 1; }
+    if [ "$hold_kind" = captain ]; then
+      result_line rejected "$(home_label)" "a captain hold is released only by its keyed answer"
+      exit 2
+    fi
   fi
   total=$(grep -c '^op=' "$payload")
   while IFS= read -r line || [ -n "$line" ]; do
@@ -859,11 +865,13 @@ cmd_new() {
   fm_ticket_locate "$DATA" "$key" || rc=$?
   if [ "$rc" -eq 2 ]; then die "ticket $key exists in more than one home ($FM_TICKET_CANDIDATES)"; fi
   if [ "$rc" -eq 0 ]; then
-    local have
+    local have shown
     if [ "$FM_TICKET_OWNER" = main ]; then
-      have=$(show_field_plain "$key" title)
+      have=$(show_field_plain "$key" title) || die "could not read ticket $key to compare its title; rerun"
     else
-      have=$(shown_value "$(fm_ticket_run_in_mate "$DATA" "$FM_TICKET_OWNER" fm-tasks-axi.sh show "$key" </dev/null 2>/dev/null | sed -n 's/^  title: //p' | head -1)")
+      shown=$(fm_ticket_run_in_mate "$DATA" "$FM_TICKET_OWNER" fm-tasks-axi.sh show "$key" </dev/null 2>/dev/null) \
+        || die "could not read ticket $key in $FM_TICKET_OWNER to compare its title; rerun"
+      have=$(shown_value "$(printf '%s\n' "$shown" | sed -n 's/^  title: //p' | head -1)")
     fi
     if [ "$have" != "$title" ]; then
       DIE_RC=2 die "ticket key $key is already taken by a different ticket owned by $(owner_label "$FM_TICKET_OWNER"); pass --key"

@@ -1435,6 +1435,13 @@ test_owner_aware_answers_and_reconcile_requests_reach_a_mate_owned_call() {
     | run_captain "$mate" reconcile-requests --routed --source-id unbound-src --source "forged" 2>&1) && \
     fail "a routed reconcile request from an unbound source was accepted: $out"
   assert_contains "$out" "not bound" "a routed reconcile request did not verify the parent's binding"
+  mv "$mate/.fm-secondmate-parent" "$TMP_ROOT/owner-mate.parent"
+  out=$(printf 'owned-two\tnote text\n' \
+    | run_captain "$parent" reconcile-requests --source-id owner-src --source "owner-aware reconcile") && \
+    fail "a reconcile request the owner cannot verify was accepted: $out"
+  assert_contains "$out" "needs a local parent home" "the owner's refusal reason was not surfaced"
+  assert_not_contains "$out" "retry" "a refusal that cannot succeed told the captain to retry"
+  mv "$TMP_ROOT/owner-mate.parent" "$mate/.fm-secondmate-parent"
 
   run_captain "$parent" hold legacy-origin-decision-own-key --title "Legacy parent call" \
     --reason "legacy choice pending" --repo sample >/dev/null || fail "parent legacy hold failed"
