@@ -29,9 +29,10 @@
 #
 # OWNER. Prints key=value lines: key, owner (main, a secondmate id, ambiguous, or
 # none), section, remote, home, candidates, and unreadable (registered mates
-# whose backlog could not be read; absence there is unknown, never a fact). From
-# a local secondmate home that does not carry the key, the lookup continues in
-# its parent home.
+# whose backlog could not be read, and `parent` when a secondmate home cannot
+# ask its parent; absence there is unknown, never a fact). From a local
+# secondmate home that does not carry the key, the lookup continues in its
+# parent home.
 #
 # EDIT is the routed request for a ticket this home may not own. It builds a
 # payload with a correlation id (--request-id, or a minted one; a caller that
@@ -42,10 +43,15 @@
 # one synchronous act and the acknowledgement is real, not a best-effort note.
 # From a secondmate home, a key that home does not carry is routed to its local
 # parent, which resolves the owner among itself and all of its mates, so a mate
-# can edit a primary-owned ticket and a ticket owned by a sibling mate.
+# can edit a primary-owned ticket and a ticket owned by a sibling mate. A
+# secondmate home with no local parent route cannot ask its parent, so such a
+# request stays pending rather than being reported absent.
 # The owner's apply is idempotent by request id: a durable receipt under
 # state/ticket-receipts/<id>.receipt in the owner's home answers a replay with
 # the original outcome, and a replay carrying different content is rejected.
+# The owner also records "Ticket request <id> applied (<hash>)." in the ticket
+# body itself, so a request replayed after the ticket was handed off is
+# recognized by the new owner and never applied twice.
 # The edits of one request are validated first, then applied one at a time with
 # per-edit progress recorded, so a crash mid-way converges on the same retry.
 # Edits ride the existing owners: title, body, priority, block and unblock go
@@ -176,12 +182,21 @@ owner_json() { # key owner section remote home candidates unreadable
       unreadable:($unreadable | split(" ") | map(select(length > 0)))}'
 }
 
+# The label of owner <owner> as seen from this home: `main` from fm_ticket_locate
+# means this home, which in a secondmate home is that mate's own id.
+owner_label() { # <owner>
+  if [ "$1" = main ]; then home_label; else printf '%s\n' "$1"; fi
+}
+
 # Resolve the owner in the widest scope this home can see; sets the FM_TICKET_*
 resolve_owner() { # <key>
   local key=$1 rc=0 parent out
   fm_ticket_locate "$DATA" "$key" || rc=$?
+  [ "$rc" -ne 0 ] || FM_TICKET_OWNER=$(owner_label "$FM_TICKET_OWNER")
   [ "$rc" -eq 1 ] || return "$rc"
-  if parent=$(local_parent_home); then
+  if ! parent=$(local_parent_home); then
+    [ "$(home_label)" = main ] || FM_TICKET_UNREADABLE="$FM_TICKET_UNREADABLE parent"
+  else
     out=$(run_in_parent "$parent" owner "$key" 2>/dev/null) || true
     if [ -n "$out" ]; then
       FM_TICKET_OWNER=$(printf '%s\n' "$out" | sed -n 's/^owner=//p' | head -1)
@@ -196,6 +211,7 @@ resolve_owner() { # <key>
         *) return 0 ;;
       esac
     fi
+    FM_TICKET_UNREADABLE="$FM_TICKET_UNREADABLE parent"
   fi
   return 1
 }
@@ -311,19 +327,51 @@ status_rc() { # <status>
 
 # --- apply (runs in the owning home) -------------------------------------------
 
-show_body() { # <key>: the current body text of a ticket
-  local shown raw
-  shown=$("$SCRIPT_DIR/fm-tasks-axi.sh" show "$1" --full 2>/dev/null) || return 1
-  raw=$(printf '%s\n' "$shown" | sed -n 's/^  body: //p' | head -1)
-  case "$raw" in
-    \"*\") printf '%s' "$raw" | jq -r . ;;
-    '-' | '') printf '' ;;
-    *) printf '%s' "$raw" ;;
+# A `tasks-axi show` field value, decoded: tasks-axi quotes a value that holds
+# special characters as a JSON string.
+shown_value() { # <raw-value>
+  case "$1" in
+    \"*\") printf '%s' "$1" | jq -r . ;;
+    *) printf '%s' "$1" ;;
   esac
 }
 
+show_body() { # <key>: the current body text of a ticket
+  local shown raw
+  shown=$("$SCRIPT_DIR/fm-tasks-axi.sh" show "$1" --full 2>/dev/null) || return 1
+  raw=$(shown_value "$(printf '%s\n' "$shown" | sed -n 's/^  body: //p' | head -1)")
+  [ "$raw" = - ] || printf '%s' "$raw"
+}
+
 show_field_plain() { # <key> <field>
-  "$SCRIPT_DIR/fm-tasks-axi.sh" show "$1" --full 2>/dev/null | sed -n "s/^  $2: //p" | head -1
+  shown_value "$("$SCRIPT_DIR/fm-tasks-axi.sh" show "$1" --full 2>/dev/null | sed -n "s/^  $2: //p" | head -1)"
+}
+
+# The ops hash a request id was applied with, from the marker line the owner
+# writes into the ticket body itself, so the record travels with a handoff.
+request_marker_hash() { # <key> <request-id>
+  show_body "$1" | awk -v req="$2" '$1 == "Ticket" && $2 == "request" && $3 == req && $4 == "applied" {
+    h = $5; gsub(/[().]/, "", h); print h; exit }'
+}
+
+request_markers() { # <key>: every request marker line in the ticket body
+  show_body "$1" | awk '$1 == "Ticket" && $2 == "request" && $4 == "applied" && NF == 5'
+}
+
+record_request_marker() { # <key> <request-id> <hash>
+  local tmp old
+  old=$(show_body "$1") || return 1
+  tmp=$(umask 077; mktemp "${TMPDIR:-/tmp}/fm-ticket-body.XXXXXX") || return 1
+  {
+    [ -z "$old" ] || printf '%s\n' "$old"
+    printf 'Ticket request %s applied (%s).\n' "$2" "${3:0:16}"
+  } > "$tmp"
+  if "$SCRIPT_DIR/fm-tasks-axi.sh" update "$1" --body-file "$tmp" >/dev/null 2>&1; then
+    rm -f -- "$tmp"
+    return 0
+  fi
+  rm -f -- "$tmp"
+  return 1
 }
 
 # Validate every operand before any is applied; sets REJECT on the first fault.
@@ -385,7 +433,10 @@ apply_one_op() { # <key> <request-id> <requester> <op-line-without-op=>; exit no
       tmp=$(umask 077; mktemp "${TMPDIR:-/tmp}/fm-ticket-body.XXXXXX") || return 1
       text=$(b64d "$a")
       if [ "$op" = body ]; then
-        printf '%s\n' "$text" > "$tmp"
+        {
+          printf '%s\n' "$text"
+          request_markers "$key"
+        } > "$tmp"
       else
         old=$(show_body "$key") || { rm -f -- "$tmp"; return 1; }
         {
@@ -425,7 +476,7 @@ apply_one_op() { # <key> <request-id> <requester> <op-line-without-op=>; exit no
 }
 
 cmd_apply() {
-  local requester=unknown payload section hash receipt progress idx=0 line lock rc=0 total
+  local requester=unknown payload section hash receipt progress idx=0 line lock rc=0 total recorded
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --requester) shift; requester=${1:-unknown} ;;
@@ -467,6 +518,15 @@ cmd_apply() {
     exit 2
   fi
   command -v tasks-axi >/dev/null 2>&1 || { result_line pending "$(home_label)" "tasks-axi is not available"; exit 1; }
+  recorded=$(request_marker_hash "$PAYLOAD_KEY" "$PAYLOAD_REQUEST")
+  if [ -n "$recorded" ]; then
+    if [ "$recorded" = "${hash:0:16}" ]; then
+      result_line replay "$(home_label)" "already applied: recorded on ticket $PAYLOAD_KEY"
+      exit 0
+    fi
+    result_line rejected "$(home_label)" "request id $PAYLOAD_REQUEST was already used with different content"
+    exit 2
+  fi
   if ! validate_ops "$payload"; then
     result_line rejected "$(home_label)" "$REJECT"
     exit 2
@@ -491,6 +551,8 @@ cmd_apply() {
     result_line pending "$(home_label)" "edit $idx of $total failed in the owning home; the request is retryable"
     exit 1
   fi
+  record_request_marker "$PAYLOAD_KEY" "$PAYLOAD_REQUEST" "$hash" \
+    || { result_line pending "$(home_label)" "applied but the request could not be recorded on the ticket"; exit 1; }
   {
     printf 'request=%s\nkey=%s\nhash=%s\nrequester=%s\nat=%s\n' "$PAYLOAD_REQUEST" "$PAYLOAD_KEY" "$hash" "$requester" "$(now_epoch)"
     printf 'detail=%s edit(s) applied\n' "$total"
@@ -505,7 +567,7 @@ cmd_apply() {
 # Deliver the journaled payload at <file> to its owner and print the result line.
 # Sets ROUTE_RC to the request's exit status.
 route_payload() { # <payload-file> <requester-label>
-  local file=$1 requester=$2 key req out rc=0 owner parent believed
+  local file=$1 requester=$2 key req out rc=0 owner parent believed label
   PAYLOAD_ERROR=
   validate_payload_shape "$file" || { result_line rejected "$(home_label)" "$PAYLOAD_ERROR"; ROUTE_RC=2; return; }
   key=$PAYLOAD_KEY
@@ -529,6 +591,11 @@ route_payload() { # <payload-file> <requester-label>
         fi
         return
       fi
+      if [ "$(home_label)" != main ]; then
+        result_line pending parent "ticket $key is not in this secondmate home and it has no local parent route to ask its parent; retry once the parent is reachable"
+        ROUTE_RC=4
+        return
+      fi
       if [ -n "$FM_TICKET_UNREADABLE" ]; then
         result_line pending unknown "ticket $key was not found and these homes could not be read: $FM_TICKET_UNREADABLE"
         ROUTE_RC=4
@@ -541,13 +608,14 @@ route_payload() { # <payload-file> <requester-label>
   esac
   owner=$FM_TICKET_OWNER
   believed=$owner
+  label=$(owner_label "$owner")
   if [ "$owner" = main ]; then
     out=$(cmd_apply_here "$file" "$requester") && rc=0 || rc=$?
   else
     out=$(fm_ticket_run_in_mate "$DATA" "$owner" fm-ticket.sh apply --requester "$requester" < "$file" 2>&1) && rc=0 || rc=$?
   fi
   if ! parse_result "$out"; then
-    result_line pending "$owner" "owner $owner could not be reached or gave no result (exit $rc)"
+    result_line pending "$label" "owner $label could not be reached or gave no result (exit $rc)"
     ROUTE_RC=4
     return
   fi
@@ -556,16 +624,17 @@ route_payload() { # <payload-file> <requester-label>
     rc=0
     fm_ticket_locate "$DATA" "$key" || rc=$?
     if [ "$rc" -eq 0 ] && [ "$FM_TICKET_OWNER" != "$believed" ]; then
-      result_line moved "$FM_TICKET_OWNER" "ticket $key moved from $believed to $FM_TICKET_OWNER; retry delivers it there"
+      owner=$(owner_label "$FM_TICKET_OWNER")
+      result_line moved "$owner" "ticket $key moved from $label to $owner; retry delivers it there"
       ROUTE_RC=3
       return
     fi
-    result_line absent none "ticket $key is no longer in $believed and no readable home carries it"
+    result_line absent none "ticket $key is no longer in $label and no readable home carries it"
     ROUTE_RC=3
     return
   fi
-  R_OWNER=$owner
-  result_line "$R_STATUS" "$owner" "$R_DETAIL"
+  R_OWNER=$label
+  result_line "$R_STATUS" "$label" "$R_DETAIL"
   ROUTE_RC=$(status_rc "$R_STATUS")
   case "$R_STATUS" in
     applied) notify_owner "$owner" "$key" "$req" "$requester" ;;
@@ -781,13 +850,13 @@ cmd_new() {
     if [ "$FM_TICKET_OWNER" = main ]; then
       have=$(show_field_plain "$key" title)
     else
-      have=$(fm_ticket_run_in_mate "$DATA" "$FM_TICKET_OWNER" fm-tasks-axi.sh show "$key" </dev/null 2>/dev/null | sed -n 's/^  title: //p' | head -1)
+      have=$(shown_value "$(fm_ticket_run_in_mate "$DATA" "$FM_TICKET_OWNER" fm-tasks-axi.sh show "$key" </dev/null 2>/dev/null | sed -n 's/^  title: //p' | head -1)")
     fi
     if [ "$have" != "$title" ]; then
-      DIE_RC=2 die "ticket key $key is already taken by a different ticket owned by $FM_TICKET_OWNER; pass --key"
+      DIE_RC=2 die "ticket key $key is already taken by a different ticket owned by $(owner_label "$FM_TICKET_OWNER"); pass --key"
     fi
     if [ "$FM_TICKET_OWNER" = "$owner" ] || [ "$FM_TICKET_OWNER" != main ]; then
-      printf 'key=%s\nowner=%s\nstatus=exists\n' "$key" "$FM_TICKET_OWNER"
+      printf 'key=%s\nowner=%s\nstatus=exists\n' "$key" "$(owner_label "$FM_TICKET_OWNER")"
       exit 0
     fi
   else
@@ -800,14 +869,14 @@ cmd_new() {
     "$SCRIPT_DIR/fm-tasks-axi.sh" add "${add_args[@]}" >/dev/null || die "could not file $key in this home's backlog"
   fi
   if [ "$owner" = main ]; then
-    printf 'key=%s\nowner=main\nstatus=filed\n' "$key"
+    printf 'key=%s\nowner=%s\nstatus=filed\n' "$key" "$(home_label)"
     exit 0
   fi
   if "$SCRIPT_DIR/fm-backlog-handoff.sh" "$owner" "$key" >&2; then
     printf 'key=%s\nowner=%s\nstatus=handed-off\n' "$key" "$owner"
     exit 0
   fi
-  printf 'key=%s\nowner=main\nstatus=pending-handoff\ndetail=filed Queued in this home; rerun the same command to retry the handoff to %s\n' "$key" "$owner"
+  printf 'key=%s\nowner=%s\nstatus=pending-handoff\ndetail=filed Queued in this home; rerun the same command to retry the handoff to %s\n' "$key" "$(home_label)" "$owner"
   exit 4
 }
 

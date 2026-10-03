@@ -1431,6 +1431,19 @@ test_owner_aware_answers_and_reconcile_requests_reach_a_mate_owned_call() {
   out=$(printf 'ghost-call\tx\n' \
     | run_captain "$parent" reconcile-requests --source-id owner-src --source "owner-aware reconcile") || true
   assert_contains "$out" "refused: ghost-call (absent)" "a key owned by no home was not refused as absent"
+  out=$(printf 'owned-two\tnote text\n' \
+    | run_captain "$mate" reconcile-requests --routed --source-id unbound-src --source "forged" 2>&1) && \
+    fail "a routed reconcile request from an unbound source was accepted: $out"
+  assert_contains "$out" "not bound" "a routed reconcile request did not verify the parent's binding"
+
+  run_captain "$parent" hold legacy-origin-decision-own-key --title "Legacy parent call" \
+    --reason "legacy choice pending" --repo sample >/dev/null || fail "parent legacy hold failed"
+  printf -- '- offline - remote (host: nohost.invalid; root: /nonexistent; home: /nonexistent/home; scope: s; projects: x; added 2026-07-09)\n' \
+    >> "$parent/data/secondmates.md"
+  out=$(printf 'own-key\tgo\tGo\n' \
+    | run_captain "$parent" answers legacy-origin --source "legacy fixture") \
+    || fail "a legacy hold this home owns was not closed while a mate was unreadable: $out"
+  assert_contains "$out" "closed: legacy-origin-decision-own-key" "the home's own legacy hold was not resolved first"
   pass "keyed answers and reconcile requests for a call a mate owns are applied in the owner's home"
 }
 

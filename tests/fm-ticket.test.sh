@@ -69,6 +69,8 @@ test_owner_lookup_names_main_mate_and_absent() {
   [ "$(printf '%s' "$out" | jq -r .owner)" = alpha ] || fail "json owner wrong: $out"
   out=$(t "$A" owner m-one) || fail "mate could not see a primary-owned ticket through its parent: $out"
   assert_contains "$out" "owner=main" "mate lookup did not reach the parent"
+  out=$(t "$A" owner a-one) || fail "mate could not see its own ticket: $out"
+  assert_contains "$out" "owner=alpha" "a mate's own ticket was reported under another home's label"
   rc=0
   out=$(t "$H" owner nothing-here) || rc=$?
   [ "$rc" -eq 1 ] || fail "absent ticket did not exit 1 (got $rc)"
@@ -194,6 +196,43 @@ test_edit_with_an_unreadable_owner_is_pending_and_retry_converges() {
   pass "an unreadable owner leaves a journaled pending request that retry delivers"
 }
 
+test_mate_without_a_local_parent_route_leaves_an_edit_pending() {
+  setup_fleet nopar
+  axi "$H" add m-one "main ticket" --repo gamma --queue >/dev/null
+  local out rc=0
+  mv "$A/.fm-secondmate-parent" "$TMP_ROOT/nopar.parent"
+  out=$(t "$A" edit m-one --request-id np-1 --priority 2) || rc=$?
+  [ "$rc" -eq 4 ] || fail "an edit a mate cannot route was not left pending (got $rc): $out"
+  assert_contains "$out" "status=pending" "an unroutable edit was reported as a definitive outcome"
+  out=$(t "$A" owner m-one) || true
+  assert_contains "$out" "unreadable=parent" "owner lookup hid that the parent could not be asked"
+  mv "$TMP_ROOT/nopar.parent" "$A/.fm-secondmate-parent"
+  t "$A" resume-pending >/dev/null || fail "resume-pending did not converge"
+  assert_contains "$(t "$A" status np-1)" "status=applied" "resume-pending did not retry the pending edit"
+  assert_contains "$(axi "$H" show m-one --full)" "priority: 2" "retried edit did not land"
+  pass "a mate with no local parent route keeps the edit pending and resume-pending delivers it"
+}
+
+test_replay_after_a_handoff_is_not_applied_twice() {
+  setup_fleet rep
+  axi "$A" add a-one "alpha ticket" --repo alpha --queue --body "first line" >/dev/null
+  local out
+  printf 'schema=fm-ticket-edit.v1\nrequest=lost-ack\nkey=a-one\nop=note\t%s\n' "$(printf 'once only' | base64)" \
+    > "$TMP_ROOT/lost.payload"
+  FM_HOME="$A" FM_ROOT_OVERRIDE="$ROOT" "$TICKET" apply --requester main < "$TMP_ROOT/lost.payload" >/dev/null \
+    || fail "direct apply at the owner failed"
+  FM_HOME="$H" FM_ROOT_OVERRIDE="$ROOT" "$ROOT/bin/fm-backlog-handoff.sh" --from alpha beta a-one >/dev/null 2>&1 \
+    || fail "setup lateral handoff failed"
+  out=$(t "$H" edit a-one --request-id lost-ack --note "once only") || fail "replay at the new owner failed: $out"
+  assert_contains "$out" "status=replay" "the new owner did not recognize the applied request"
+  [ "$(axi "$B" show a-one --full | grep -o 'once only' | wc -l)" -eq 1 ] || fail "the note was applied twice after a handoff"
+  out=$(t "$H" edit a-one --request-id rep-2 --body "replaced body") || fail "body replace failed: $out"
+  out=$(FM_HOME="$B" FM_ROOT_OVERRIDE="$ROOT" "$TICKET" apply --requester main < "$TMP_ROOT/lost.payload") \
+    || fail "replay after a body replace failed: $out"
+  assert_contains "$out" "status=replay" "a body replace dropped the applied-request record"
+  pass "the applied request id travels in the ticket, so a replay after a handoff is not applied twice"
+}
+
 test_new_ticket_lands_in_the_owning_home() {
   setup_fleet new
   local out
@@ -208,6 +247,12 @@ test_new_ticket_lands_in_the_owning_home() {
   out=$(t "$H" new gamma "Unowned work") || fail "new for an unlisted project failed: $out"
   assert_contains "$out" "owner=main" "unlisted project did not stay in main"
   assert_grep 'gamma-unowned-work' "$H/data/backlog.md" "ticket missing from main"
+  t "$H" new gamma "Fix: login" >/dev/null || fail "new with a quoted title failed"
+  out=$(t "$H" new gamma "Fix: login") || fail "rerun with a quoted title did not converge: $out"
+  assert_contains "$out" "status=exists" "rerun with a quoted title was not reported as existing"
+  t "$H" new alpha "Fix: alpha login" >/dev/null || fail "new for a mate with a quoted title failed"
+  out=$(t "$H" new alpha "Fix: alpha login") || fail "mate rerun with a quoted title did not converge: $out"
+  assert_contains "$out" "status=exists" "mate rerun with a quoted title was not reported as existing"
   out=$(t "$H" new shared "Shared thing" --owner alpha) || fail "explicit owner failed: $out"
   assert_contains "$out" "owner=alpha" "--owner was ignored"
   printf -- '- beta2 - more (home: %s; scope: s; projects: beta; added 2026-07-09)\n' "$B" >> "$H/data/secondmates.md"
@@ -223,6 +268,8 @@ test_edit_rejects_invalid_and_closed_without_partial_effect
 test_edit_of_a_moved_ticket_reports_the_new_owner_and_retry_follows
 test_mate_requester_edits_primary_and_sibling_tickets_through_its_parent
 test_edit_with_an_unreadable_owner_is_pending_and_retry_converges
+test_mate_without_a_local_parent_route_leaves_an_edit_pending
+test_replay_after_a_handoff_is_not_applied_twice
 test_new_ticket_lands_in_the_owning_home
 
 echo "ALL TESTS PASSED"

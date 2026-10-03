@@ -103,7 +103,8 @@
 # visibly refuses it, and never passes it to `answer`, so no channel and no
 # card-declared mode can turn it into a close, release, or request. A separate
 # `reconcile-requests` intake verifies a captured source's binding before it
-# records a durable request under `state/reconcile-requests/`.
+# records a durable request under `state/reconcile-requests/`; its `--routed`
+# owner-side leg verifies the same binding in its local parent home.
 #
 # `reconcile` is the verify-then-decide half. Both outcomes require the pending
 # request created by the captain's board selection. `close` is the moot outcome:
@@ -1322,7 +1323,11 @@ sanitize_reconcile_provenance() {
 # for it is then handed to the owner's own copy of this script, which closes or
 # records it in the owner's backlog under the owner's locks and publishes the
 # resolution on the owner's parent channel. Only the answer and request intake
-# cross: they ride stdin, so they work for a local mate and a remote mate alike.
+# cross: they ride stdin. A keyed answer works for a local and a remote mate
+# alike; a routed reconcile request carries its source id and the owner verifies
+# that binding in its local parent's binding store, so a remote mate refuses it.
+# Routing runs only after this home's own exact, legacy, and migrated
+# resolution finds nothing.
 # A remote mate's answer-by-file and reconcile close or note take file paths,
 # which cannot cross, so they refuse with the owner named.
 
@@ -1414,23 +1419,6 @@ command_answers() {
         continue
         ;;
     esac
-    if ! task_show "$key"; then
-      owner_rc=0
-      owner=$(mate_owner_of "$key") || owner_rc=$?
-      if [ "$owner_rc" -eq 0 ]; then
-        if delegate_keyed_answer "$owner" "$key" "$answer" "$label" "${mode:-}" "$source"; then
-          closed=$((closed + 1))
-        else
-          skipped=$((skipped + 1))
-        fi
-        continue
-      fi
-      if [ "$owner_rc" -eq 2 ]; then
-        printf 'skipped: %s (owner is ambiguous or a secondmate home could not be read; nothing was recorded)\n' "$key"
-        skipped=$((skipped + 1))
-        continue
-      fi
-    fi
     resolve_rc=0
     id=$(resolve_entry "$origin" "$key" 2>"$err") || resolve_rc=$?
     id=${id%% *}
@@ -1447,6 +1435,21 @@ command_answers() {
       # must not be spent as a skip.
       [ "$resolve_rc" -ne 124 ] \
         || fail "the backlog backend exceeded its read bound resolving $key"
+      owner_rc=0
+      owner=$(mate_owner_of "$key") || owner_rc=$?
+      if [ "$owner_rc" -eq 0 ]; then
+        if delegate_keyed_answer "$owner" "$key" "$answer" "$label" "${mode:-}" "$source"; then
+          closed=$((closed + 1))
+        else
+          skipped=$((skipped + 1))
+        fi
+        continue
+      fi
+      if [ "$owner_rc" -eq 2 ]; then
+        printf 'skipped: %s (not in this home, and its owner is ambiguous or a secondmate home could not be read; nothing was recorded)\n' "$key"
+        skipped=$((skipped + 1))
+        continue
+      fi
       printf 'skipped: %s (no captain-held task with that id)\n' "$key"
       skipped=$((skipped + 1))
       continue
@@ -1594,13 +1597,20 @@ command_reconcile_requests() {
     shift
   done
   [ -n "$source" ] || fail "--source provenance is required"
-  # --routed is the owner-side leg of an owner-aware request: the sending home
-  # already verified the source binding, so only the sender's provenance travels.
-  if [ "$routed" -eq 0 ]; then
-    validate_source_id "$source_id"
+  validate_source_id "$source_id"
+  # --routed is the owner-side leg of an owner-aware request sent by this
+  # secondmate home's parent: the source binding is verified again here, in the
+  # sending parent's own binding store, reached through the local parent route.
+  if [ "$routed" -eq 1 ]; then
+    fm_secondmate_parent_record_parse "$FM_HOME/.fm-secondmate-parent" \
+      && [ "$FM_SECONDMATE_PARENT_ROUTE" = local ] && [ -d "$FM_SECONDMATE_PARENT_HOME" ] \
+      || fail "a routed reconcile request needs a local parent home whose source binding this home can verify"
+    origin=$(BINDING_DIR="$FM_SECONDMATE_PARENT_HOME/state/decision-bindings" read_binding "$source_id") \
+      || fail "cannot verify the parent's binding for source $source_id"
+  else
     origin=$(read_binding "$source_id") || fail "cannot verify the binding for source $source_id"
-    [ -n "$origin" ] || fail "source $source_id is not bound; no reconcile requests were created"
   fi
+  [ -n "$origin" ] || fail "source $source_id is not bound; no reconcile requests were created"
   require_tasks_axi
   while IFS= read -r row; do
     id=${row%%"$tab"*}
@@ -1620,10 +1630,15 @@ command_reconcile_requests() {
     if [ "$show_status" -eq 124 ]; then
       fail "the backlog backend exceeded its read bound reading $id"
     fi
-    if [ -z "$show" ] && [ "$routed" -eq 0 ] && { owner_rc=0; owner=$(mate_owner_of "$id") || owner_rc=$?; [ "$owner_rc" -eq 0 ]; }; then
+    owner_rc=1
+    if [ -z "$show" ] && [ "$routed" -eq 0 ]; then
+      owner_rc=0
+      owner=$(mate_owner_of "$id") || owner_rc=$?
+    fi
+    if [ -z "$show" ] && [ "$owner_rc" -eq 0 ]; then
       out=$(printf '%s\t%s\n' "$id" "$note" \
         | fm_ticket_run_in_mate "$DATA" "$owner" fm-captain-hold.sh reconcile-requests --routed \
-          --source "$source (routed to $owner)" 2>&1) || true
+          --source-id "$source_id" --source "$source (routed to $owner)" 2>&1) || true
       if printf '%s\n' "$out" | grep -q "^reconcile: $id\$"; then
         printf 'reconcile: %s\n' "$id"
         created=$((created + 1))
@@ -1632,6 +1647,9 @@ command_reconcile_requests() {
         printf '%s\n' "${line:-refused: $id (owner $owner could not record the reconcile request; retry)}"
         skipped=$((skipped + 1))
       fi
+    elif [ -z "$show" ] && [ "$owner_rc" -eq 2 ]; then
+      printf 'refused: %s (not in this home, and its owner is ambiguous or a secondmate home could not be read; retry)\n' "$id"
+      skipped=$((skipped + 1))
     elif [ -z "$show" ]; then
       printf 'refused: %s (absent)\n' "$id"
       skipped=$((skipped + 1))
