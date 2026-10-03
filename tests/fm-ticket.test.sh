@@ -210,7 +210,13 @@ test_mate_without_a_local_parent_route_leaves_an_edit_pending() {
   t "$A" resume-pending >/dev/null || fail "resume-pending did not converge"
   assert_contains "$(t "$A" status np-1)" "status=applied" "resume-pending did not retry the pending edit"
   assert_contains "$(axi "$H" show m-one --full)" "priority: 2" "retried edit did not land"
-  pass "a mate with no local parent route keeps the edit pending and resume-pending delivers it"
+  printf 'schema=fm-secondmate-parent.v1\nroute=remote\nparent_host=nohost.invalid\n' > "$A/.fm-secondmate-parent"
+  rc=0
+  out=$(t "$A" edit m-one --request-id np-2 --priority 3) || rc=$?
+  [ "$rc" -eq 2 ] || fail "an edit behind a remote parent route was not rejected as unsupported (got $rc): $out"
+  assert_contains "$out" "unsupported" "an unroutable edit did not say it is unsupported"
+  t "$A" resume-pending >/dev/null || fail "resume-pending retried an unsupported edit"
+  pass "a mate with no local parent route keeps the edit pending and resume-pending delivers it; a remote parent route is unsupported"
 }
 
 test_replay_after_a_handoff_is_not_applied_twice() {

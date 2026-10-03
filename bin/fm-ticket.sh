@@ -44,8 +44,9 @@
 # From a secondmate home, a key that home does not carry is routed to its local
 # parent, which resolves the owner among itself and all of its mates, so a mate
 # can edit a primary-owned ticket and a ticket owned by a sibling mate. A
-# secondmate home with no local parent route cannot ask its parent, so such a
-# request stays pending rather than being reported absent.
+# secondmate home whose local parent is unavailable leaves such a request
+# pending rather than reporting it absent; one whose parent route is remote
+# cannot route it at all, so the request is rejected as unsupported.
 # The owner's apply is idempotent by request id: a durable receipt under
 # state/ticket-receipts/<id>.receipt in the owner's home answers a replay with
 # the original outcome, and a replay carrying different content is rejected.
@@ -350,12 +351,16 @@ show_field_plain() { # <key> <field>
 # The ops hash a request id was applied with, from the marker line the owner
 # writes into the ticket body itself, so the record travels with a handoff.
 request_marker_hash() { # <key> <request-id>
-  show_body "$1" | awk -v req="$2" '$1 == "Ticket" && $2 == "request" && $3 == req && $4 == "applied" {
+  local body
+  body=$(show_body "$1") || return 1
+  printf '%s\n' "$body" | awk -v req="$2" '$1 == "Ticket" && $2 == "request" && $3 == req && $4 == "applied" {
     h = $5; gsub(/[().]/, "", h); print h; exit }'
 }
 
 request_markers() { # <key>: every request marker line in the ticket body
-  show_body "$1" | awk '$1 == "Ticket" && $2 == "request" && $4 == "applied" && NF == 5'
+  local body
+  body=$(show_body "$1") || return 1
+  printf '%s\n' "$body" | awk '$1 == "Ticket" && $2 == "request" && $4 == "applied" && NF == 5'
 }
 
 record_request_marker() { # <key> <request-id> <hash>
@@ -433,9 +438,10 @@ apply_one_op() { # <key> <request-id> <requester> <op-line-without-op=>; exit no
       tmp=$(umask 077; mktemp "${TMPDIR:-/tmp}/fm-ticket-body.XXXXXX") || return 1
       text=$(b64d "$a")
       if [ "$op" = body ]; then
+        old=$(request_markers "$key") || { rm -f -- "$tmp"; return 1; }
         {
           printf '%s\n' "$text"
-          request_markers "$key"
+          [ -z "$old" ] || printf '%s\n' "$old"
         } > "$tmp"
       else
         old=$(show_body "$key") || { rm -f -- "$tmp"; return 1; }
@@ -518,7 +524,8 @@ cmd_apply() {
     exit 2
   fi
   command -v tasks-axi >/dev/null 2>&1 || { result_line pending "$(home_label)" "tasks-axi is not available"; exit 1; }
-  recorded=$(request_marker_hash "$PAYLOAD_KEY" "$PAYLOAD_REQUEST")
+  recorded=$(request_marker_hash "$PAYLOAD_KEY" "$PAYLOAD_REQUEST") \
+    || { result_line pending "$(home_label)" "ticket $PAYLOAD_KEY could not be read to check for an earlier application; the request is retryable"; exit 1; }
   if [ -n "$recorded" ]; then
     if [ "$recorded" = "${hash:0:16}" ]; then
       result_line replay "$(home_label)" "already applied: recorded on ticket $PAYLOAD_KEY"
@@ -589,6 +596,12 @@ route_payload() { # <payload-file> <requester-label>
           result_line pending parent "the parent home gave no result"
           ROUTE_RC=4
         fi
+        return
+      fi
+      if [ "$(home_label)" != main ] && fm_secondmate_parent_record_parse "$FM_HOME/.fm-secondmate-parent" \
+        && [ "$FM_SECONDMATE_PARENT_ROUTE" != local ]; then
+        result_line rejected parent "unsupported: ticket $key is not in this secondmate home, and its $FM_SECONDMATE_PARENT_ROUTE parent route cannot carry a routed edit; edit it in the owning home"
+        ROUTE_RC=2
         return
       fi
       if [ "$(home_label)" != main ]; then

@@ -1325,7 +1325,8 @@ sanitize_reconcile_provenance() {
 # resolution on the owner's parent channel. Only the answer and request intake
 # cross: they ride stdin. A keyed answer works for a local and a remote mate
 # alike; a routed reconcile request carries its source id and the owner verifies
-# that binding in its local parent's binding store, so a remote mate refuses it.
+# that binding in its local parent's binding store, so one for a remote mate is
+# refused as unsupported before it is sent.
 # Routing runs only after this home's own exact, legacy, and migrated
 # resolution finds nothing.
 # A remote mate's answer-by-file and reconcile close or note take file paths,
@@ -1635,7 +1636,10 @@ command_reconcile_requests() {
       owner_rc=0
       owner=$(mate_owner_of "$id") || owner_rc=$?
     fi
-    if [ -z "$show" ] && [ "$owner_rc" -eq 0 ]; then
+    if [ -z "$show" ] && [ "$owner_rc" -eq 0 ] && fm_ticket_registry_remote "$DATA" "$owner"; then
+      printf 'refused: %s (unsupported: held in remote secondmate %s, which cannot verify this home'"'"'s source binding; reconcile it in that home)\n' "$id" "$owner"
+      skipped=$((skipped + 1))
+    elif [ -z "$show" ] && [ "$owner_rc" -eq 0 ]; then
       out=$(printf '%s\t%s\n' "$id" "$note" \
         | fm_ticket_run_in_mate "$DATA" "$owner" fm-captain-hold.sh reconcile-requests --routed \
           --source-id "$source_id" --source "$source (routed to $owner)" 2>&1) || true

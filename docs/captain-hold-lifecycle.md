@@ -340,7 +340,7 @@ That scope is all card types, because the captured payload carries no card type.
 A call held in a registered secondmate home is owned by that home, and the main keyed-answer and reconcile-request intakes route to it.
 When a task is absent from the main backlog, `bin/fm-ticket-lib.sh` finds the one secondmate backlog that carries it, and the intake hands the answer or request over stdin to that home's own `fm-captain-hold.sh`.
 The owner closes or records it under its own locks and publishes the resolution on its parent channel.
-A routed reconcile request carries the source id, and the owner verifies that source's binding again in its parent's binding store through its local parent route, so a remote secondmate refuses a routed reconcile request it cannot verify.
+A routed reconcile request carries the source id, and the owner verifies that source's binding again in its parent's binding store through its local parent route, so a reconcile request for a call held in a remote secondmate is refused as unsupported by the sending home and is reconciled in that home instead.
 This home's own exact, legacy, and migrated holds resolve first, and only a key none of them resolves is routed.
 A task that no readable home carries is still refused as absent, an ambiguous owner or an unreadable secondmate home is skipped with nothing recorded, and a failed delivery is reported so the same answer can be retried.
 The single-task `answer` and `reconcile close|note` commands take file arguments, so they run in the owning home directly.
