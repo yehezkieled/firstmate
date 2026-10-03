@@ -33,10 +33,12 @@ FM_TICKET_CANDIDATES=
 FM_TICKET_ERROR=
 
 # Section (## In flight / ## Queued / ## Done) of the item whose header id is
-# <key>, or non-zero when no header carries that id.
+# <key>; 1 when no header carries that id, 2 when the backlog cannot be read
+# (absence there is unknown, never a fact).
 fm_backlog_key_section() { # <backlog-file> <key>
-  local file=$1 key=$2
+  local file=$1 key=$2 rc=0
   [ -f "$file" ] || return 1
+  [ -r "$file" ] || return 2
   awk -v key="$key" '
     BEGIN { section = "## Queued" }
     /^##[[:space:]]+/ {
@@ -53,7 +55,9 @@ fm_backlog_key_section() { # <backlog-file> <key>
       if (id == key) { print section; found = 1; exit }
     }
     END { exit found ? 0 : 1 }
-  ' "$file"
+  ' "$file" || rc=$?
+  [ "$rc" -le 1 ] || return 2
+  return "$rc"
 }
 
 fm_ticket_key_valid() { # <key>
@@ -122,11 +126,13 @@ fm_ticket_probe_mate() { # <data-dir> <id> <key>
   if [ ! -f "$home/data/backlog.md" ]; then
     return 1
   fi
-  if section=$(fm_backlog_key_section "$home/data/backlog.md" "$key"); then
-    printf '%s\n' "$section"
-    return 0
-  fi
-  return 1
+  rc=0
+  section=$(fm_backlog_key_section "$home/data/backlog.md" "$key") || rc=$?
+  case "$rc" in
+    0) printf '%s\n' "$section"; return 0 ;;
+    1) return 1 ;;
+    *) return 2 ;;
+  esac
 }
 
 # Locate ticket <key>: the primary backlog first (unless --mates-only), then
@@ -145,9 +151,14 @@ fm_ticket_locate() { # <data-dir> <key> [--mates-only]
   FM_TICKET_UNREADABLE=
   FM_TICKET_CANDIDATES=
   fm_ticket_key_valid "$key" || { FM_TICKET_ERROR="unsafe ticket key: $key"; return 1; }
-  if [ "$mates_only" -eq 0 ] && section=$(fm_backlog_key_section "$data/backlog.md" "$key"); then
-    owners+=(main)
-    FM_TICKET_SECTION=$section
+  if [ "$mates_only" -eq 0 ]; then
+    rc=0
+    section=$(fm_backlog_key_section "$data/backlog.md" "$key") || rc=$?
+    case "$rc" in
+      0) owners+=(main); FM_TICKET_SECTION=$section ;;
+      1) : ;;
+      *) FM_TICKET_UNREADABLE=main ;;
+    esac
   fi
   while IFS= read -r id; do
     [ -n "$id" ] || continue

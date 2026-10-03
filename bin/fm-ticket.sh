@@ -168,9 +168,14 @@ run_in_parent() { # <parent-home> <subcommand> [args...]
 # --- owner / locate-local -----------------------------------------------------
 
 cmd_locate_local() {
-  local key=${1:-} section
+  local key=${1:-} section rc=0
   fm_ticket_key_valid "$key" || die "unsafe ticket key: $key"
-  section=$(fm_backlog_key_section "$BACKLOG" "$key") || { echo fm-ticket-absent; exit 1; }
+  section=$(fm_backlog_key_section "$BACKLOG" "$key") || rc=$?
+  case "$rc" in
+    0) ;;
+    1) echo fm-ticket-absent; exit 1 ;;
+    *) die "this home's backlog could not be read" ;;
+  esac
   printf '%s\n' "$section"
 }
 
@@ -517,9 +522,14 @@ cmd_apply() {
     result_line rejected "$(home_label)" "request id $PAYLOAD_REQUEST was already used with different content"
     exit 2
   fi
-  if ! section=$(fm_backlog_key_section "$BACKLOG" "$PAYLOAD_KEY"); then
+  rc=0
+  section=$(fm_backlog_key_section "$BACKLOG" "$PAYLOAD_KEY") || rc=$?
+  if [ "$rc" -eq 1 ]; then
     result_line absent "$(home_label)" "ticket $PAYLOAD_KEY is not in this home's backlog"
     exit 3
+  elif [ "$rc" -ne 0 ]; then
+    result_line pending "$(home_label)" "this home's backlog could not be read; the request is retryable"
+    exit 1
   fi
   if [ "$section" = '## Done' ]; then
     result_line rejected "$(home_label)" "ticket $PAYLOAD_KEY is closed"

@@ -196,6 +196,30 @@ test_edit_with_an_unreadable_owner_is_pending_and_retry_converges() {
   pass "an unreadable owner leaves a journaled pending request that retry delivers"
 }
 
+test_an_unreadable_local_mate_backlog_is_pending_not_absent() {
+  setup_fleet unread
+  axi "$B" add b-one "beta ticket" --repo beta --queue >/dev/null
+  local out rc=0
+  # A local mate whose backlog exists but cannot be read: its absence is unknown.
+  chmod 000 "$B/data/backlog.md"
+  if [ -r "$B/data/backlog.md" ]; then
+    chmod 644 "$B/data/backlog.md"
+    pass "skipped: running as a user that can read a mode-000 file"
+    return 0
+  fi
+  out=$(t "$H" owner b-one) || rc=$?
+  assert_contains "$out" "unreadable=beta" "an unreadable mate backlog was not reported unreadable"
+  rc=0
+  out=$(t "$H" edit b-one --request-id unread-1 --note "while unreadable") || rc=$?
+  chmod 644 "$B/data/backlog.md"
+  [ "$rc" -eq 4 ] || fail "an unreadable mate backlog did not leave the edit pending (got $rc): $out"
+  assert_contains "$out" "status=pending" "an unreadable mate backlog was reported as a definitive outcome"
+  t "$H" resume-pending >/dev/null || fail "resume-pending did not converge"
+  assert_contains "$(t "$H" status unread-1)" "status=applied" "resume-pending did not deliver the pending edit"
+  [ "$(grep -c 'while unreadable' "$B/data/backlog.md")" -eq 1 ] || fail "the pending edit was not applied exactly once"
+  pass "an unreadable local mate backlog leaves a pending edit that resume-pending delivers"
+}
+
 test_mate_without_a_local_parent_route_leaves_an_edit_pending() {
   setup_fleet nopar
   axi "$H" add m-one "main ticket" --repo gamma --queue >/dev/null
@@ -274,6 +298,7 @@ test_edit_rejects_invalid_and_closed_without_partial_effect
 test_edit_of_a_moved_ticket_reports_the_new_owner_and_retry_follows
 test_mate_requester_edits_primary_and_sibling_tickets_through_its_parent
 test_edit_with_an_unreadable_owner_is_pending_and_retry_converges
+test_an_unreadable_local_mate_backlog_is_pending_not_absent
 test_mate_without_a_local_parent_route_leaves_an_edit_pending
 test_replay_after_a_handoff_is_not_applied_twice
 test_new_ticket_lands_in_the_owning_home
