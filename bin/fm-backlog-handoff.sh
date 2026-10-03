@@ -73,7 +73,19 @@
 # or undeletable stale marker is reported and ignored by later resumes and
 # handoffs, so wake-state cleanup neither suppresses a new wake nor fails a
 # completed remote handoff.
-# Usage: fm-backlog-handoff.sh <secondmate-id> <item-key>...
+# REVERSE AND LATERAL HANDOFF. `--from <main|secondmate-id>` names the source
+# home (default main) and the destination may be `main`, so queued work moves
+# mate-to-main and mate-to-mate through the same classification, the same
+# `tasks-axi mv` and the same receiver wake as main-to-mate. A destination mate
+# is woken exactly as before; a destination of main is picked up by the primary
+# at its next supervision pass, so no wake is sent. Both ends must be local
+# homes: a remote source or a remote destination other than main-to-remote is
+# refused before anything moves, because a remote mate's backlog is only
+# reachable through the outbox path. Public-commitment warnings stay specific
+# to main-to-mate moves, the only direction that binds to main/<key>. A move
+# takes both homes' handoff locks in lexical id order so opposite-direction
+# moves cannot deadlock.
+# Usage: fm-backlog-handoff.sh [--from <main|secondmate-id>] <main|secondmate-id> <item-key>...
 #        fm-backlog-handoff.sh --resume-pending
 set -eu
 
@@ -94,16 +106,23 @@ MAIN_BACKLOG="$DATA/backlog.md"
 . "$SCRIPT_DIR/fm-public-followup-lib.sh"
 # shellcheck source=bin/fm-pending-reply-lib.sh
 . "$SCRIPT_DIR/fm-pending-reply-lib.sh"
+# shellcheck source=bin/fm-ticket-lib.sh
+. "$SCRIPT_DIR/fm-ticket-lib.sh"
 
 RECEIVER_WAKE_MESSAGE='New routed work is in your backlog. Run bin/fm-session-start.sh now, then act on the routed task.'
 
 ACTIVE_HANDOFF_LOCK=
+ACTIVE_SRC_LOCK=
 ACTIVE_REGISTRY_LOCK=
 RECEIVER_WAKE_IGNORE_ID=
 release_remote_locks() {
   if [ -n "$ACTIVE_HANDOFF_LOCK" ]; then
     fm_lock_release "$ACTIVE_HANDOFF_LOCK"
     ACTIVE_HANDOFF_LOCK=
+  fi
+  if [ -n "$ACTIVE_SRC_LOCK" ]; then
+    fm_lock_release "$ACTIVE_SRC_LOCK"
+    ACTIVE_SRC_LOCK=
   fi
   if [ -n "$ACTIVE_REGISTRY_LOCK" ]; then
     fm_lock_release "$ACTIVE_REGISTRY_LOCK"
@@ -118,6 +137,7 @@ sha256_file() {
 }
 
 RESUME_PENDING=0
+SRC_ID=main
 if [ "${1:-}" = --resume-pending ]; then
   [ "$#" -eq 1 ] || {
     echo "usage: fm-backlog-handoff.sh --resume-pending" >&2
@@ -127,8 +147,17 @@ if [ "${1:-}" = --resume-pending ]; then
   ID=
   shift
 else
+  SRC_ID=main
+  if [ "${1:-}" = --from ]; then
+    [ "$#" -ge 2 ] || {
+      echo "usage: fm-backlog-handoff.sh [--from <main|secondmate-id>] <main|secondmate-id> <item-key>..." >&2
+      exit 1
+    }
+    SRC_ID=$2
+    shift 2
+  fi
   [ "$#" -ge 2 ] || {
-    echo "usage: fm-backlog-handoff.sh <secondmate-id> <item-key>..." >&2
+    echo "usage: fm-backlog-handoff.sh [--from <main|secondmate-id>] <main|secondmate-id> <item-key>..." >&2
     exit 1
   }
   ID=$1
@@ -137,6 +166,15 @@ else
     exit 1
     ;;
   esac
+  case "$SRC_ID" in '' | *[!A-Za-z0-9._-]*)
+    echo "error: unsafe source id: $SRC_ID" >&2
+    exit 1
+    ;;
+  esac
+  [ "$SRC_ID" != "$ID" ] || {
+    echo "error: source and destination are the same home: $ID" >&2
+    exit 1
+  }
   shift
 fi
 
@@ -271,34 +309,12 @@ validate_backlog_file() {
   fi
 }
 
-# Classify a single key by the section it lives under (## In flight /
-# ## Queued / ## Done), or return non-zero if no `- [ ] <key>` / `- [x] <key>`
-# header exists in the file. This reads only section headings and item header
-# lines - never item bodies - so it drives the fleet-level classification (in-
-# flight refusal, already-present idempotency, missing-key abort) without
-# re-implementing the block/body move semantics that tasks-axi mv owns.
-backlog_key_section() {
-  local file=$1 key=$2
-  [ -f "$file" ] || return 1
-  awk -v key="$key" '
-    BEGIN { section = "## Queued" }
-    /^##[[:space:]]+/ {
-      section = $0
-      sub(/^##[[:space:]]+/, "## ", section)
-      sub(/[[:space:]]+$/, "", section)
-      next
-    }
-    /^- \[[ x]\] / {
-      rest = $0
-      sub(/^- \[[ x]\] +/, "", rest)
-      id = rest
-      sub(/[ \t].*/, "", id)
-      if (id == key) { print section; found = 1; exit }
-    }
-    END { exit found ? 0 : 1 }
-  ' "$file"
-}
-
+# Section classification of a single key (fm_backlog_key_section) lives in
+# bin/fm-ticket-lib.sh, the one owner of "which backlog carries this ticket".
+# It reads only section headings and item header lines - never item bodies - so
+# it drives the fleet-level classification (in-flight refusal, already-present
+# idempotency, missing-key abort) without re-implementing the block/body move
+# semantics that tasks-axi mv owns.
 backlog_key_noncanonical_body_lines() {
   local file=$1 key=$2
   awk -v key="$key" '
@@ -737,8 +753,8 @@ remove_interrupted_source_duplicates() { # <outbox> <keys...>
     remaining=0
     progress=0
     for key in "$@"; do
-      backlog_key_section "$outbox" "$key" >/dev/null 2>&1 || continue
-      if backlog_key_section "$MAIN_BACKLOG" "$key" >/dev/null 2>&1; then
+      fm_backlog_key_section "$outbox" "$key" >/dev/null 2>&1 || continue
+      if fm_backlog_key_section "$MAIN_BACKLOG" "$key" >/dev/null 2>&1; then
         remaining=$((remaining + 1))
         if tasks-axi rm "$key" --file "$MAIN_BACKLOG" >/dev/null 2>&1; then
           progress=$((progress + 1))
@@ -780,8 +796,8 @@ remote_handoff() { # <secondmate-id> <keys...>
   done_items=()
   not_queued=()
   for key in "${requested[@]}"; do
-    out_section=$(backlog_key_section "$outbox" "$key" 2>/dev/null || true)
-    main_section=$(backlog_key_section "$MAIN_BACKLOG" "$key" 2>/dev/null || true)
+    out_section=$(fm_backlog_key_section "$outbox" "$key" 2>/dev/null || true)
+    main_section=$(fm_backlog_key_section "$MAIN_BACKLOG" "$key" 2>/dev/null || true)
     if [ -n "$out_section" ]; then
       [ "$out_section" = '## Queued' ] || not_queued+=("$key")
       already+=("$key")
@@ -927,7 +943,15 @@ fi
 
 ACTIVE_REGISTRY_LOCK=$(secondmate_registry_lock_path "$STATE")
 fm_lock_acquire_wait "$ACTIVE_REGISTRY_LOCK"
-REMOTE=$(secondmate_registry_field "$REG" "$ID" remote 2>/dev/null || true)
+REMOTE=0
+[ "$ID" = main ] || REMOTE=$(secondmate_registry_field "$REG" "$ID" remote 2>/dev/null || true)
+SRC_REMOTE=0
+[ "$SRC_ID" = main ] || SRC_REMOTE=$(secondmate_registry_field "$REG" "$SRC_ID" remote 2>/dev/null || true)
+if [ "$SRC_REMOTE" = 1 ] || { [ "$REMOTE" = 1 ] && [ "$SRC_ID" != main ]; }; then
+  echo "error: a remote secondmate can only receive work from main; its backlog is not reachable for reverse or lateral handoff: from $SRC_ID to $ID" >&2
+  release_remote_locks
+  exit 1
+fi
 if [ "$REMOTE" = 1 ]; then
   ACTIVE_HANDOFF_LOCK="$STATE/.backlog-handoff-$ID.lock"
   fm_lock_acquire_wait "$ACTIVE_HANDOFF_LOCK"
@@ -935,20 +959,46 @@ if [ "$REMOTE" = 1 ]; then
   release_remote_locks
   exit "$rc"
 fi
+# The destination lock keeps its historical name. A reverse or lateral move also
+# holds the source home's lock, taken in lexical id order across both homes so
+# opposite-direction moves cannot deadlock.
 ACTIVE_HANDOFF_LOCK="$STATE/.backlog-handoff-$ID.lock"
-fm_lock_acquire_wait "$ACTIVE_HANDOFF_LOCK"
+if [ "$SRC_ID" != main ]; then
+  ACTIVE_SRC_LOCK="$STATE/.backlog-handoff-$SRC_ID.lock"
+fi
+if [ -n "$ACTIVE_SRC_LOCK" ] && [ "$SRC_ID" \< "$ID" ]; then
+  fm_lock_acquire_wait "$ACTIVE_SRC_LOCK"
+  fm_lock_acquire_wait "$ACTIVE_HANDOFF_LOCK"
+else
+  fm_lock_acquire_wait "$ACTIVE_HANDOFF_LOCK"
+  [ -z "$ACTIVE_SRC_LOCK" ] || fm_lock_acquire_wait "$ACTIVE_SRC_LOCK"
+fi
 fm_lock_release "$ACTIVE_REGISTRY_LOCK"
 ACTIVE_REGISTRY_LOCK=
 
-RAW_HOME=$(secondmate_home "$ID") || exit 1
-[ -n "$RAW_HOME" ] || {
-  echo "error: secondmate $ID has no home in $REG" >&2
-  exit 1
-}
-SUB_HOME=$(validate_secondmate_home "$ID" "$RAW_HOME") || exit 1
-SUB_BACKLOG="$SUB_HOME/data/backlog.md"
-validate_backlog_file "main backlog" "$MAIN_BACKLOG" || exit 1
-validate_backlog_file "secondmate backlog" "$SUB_BACKLOG" || exit 1
+# Resolve both ends. `main` is the active home's own backlog; any other id must
+# be a genuine seeded secondmate home. SUB_* keep naming the destination mate
+# (the wake target) and SRC_BACKLOG/DEST_BACKLOG name the move's two files.
+SRC_BACKLOG=$MAIN_BACKLOG
+if [ "$SRC_ID" != main ]; then
+  SRC_RAW_HOME=$(secondmate_home "$SRC_ID") || exit 1
+  SRC_HOME=$(validate_secondmate_home "$SRC_ID" "$SRC_RAW_HOME") || exit 1
+  SRC_BACKLOG="$SRC_HOME/data/backlog.md"
+fi
+if [ "$ID" = main ]; then
+  SUB_HOME=
+  SUB_BACKLOG=$MAIN_BACKLOG
+else
+  RAW_HOME=$(secondmate_home "$ID") || exit 1
+  [ -n "$RAW_HOME" ] || {
+    echo "error: secondmate $ID has no home in $REG" >&2
+    exit 1
+  }
+  SUB_HOME=$(validate_secondmate_home "$ID" "$RAW_HOME") || exit 1
+  SUB_BACKLOG="$SUB_HOME/data/backlog.md"
+fi
+validate_backlog_file "source backlog" "$SRC_BACKLOG" || exit 1
+validate_backlog_file "destination backlog" "$SUB_BACKLOG" || exit 1
 
 # Classify every key before changing anything: move-from-main, already-in-sub, or
 # missing. Abort with no changes if any key matches neither backlog.
@@ -959,9 +1009,9 @@ IN_FLIGHT=()
 DONE=()
 NOT_QUEUED=()
 for key in "$@"; do
-  if backlog_key_section "$SUB_BACKLOG" "$key" >/dev/null; then
+  if fm_backlog_key_section "$SUB_BACKLOG" "$key" >/dev/null; then
     ALREADY+=("$key")
-  elif section=$(backlog_key_section "$MAIN_BACKLOG" "$key"); then
+  elif section=$(fm_backlog_key_section "$SRC_BACKLOG" "$key"); then
     case "$section" in
     "## Queued") TO_MOVE+=("$key") ;;
     "## In flight") IN_FLIGHT+=("$key") ;;
@@ -987,7 +1037,7 @@ if [ "${#NOT_QUEUED[@]}" -gt 0 ]; then
   FAILED=1
 fi
 if [ "${#MISSING[@]}" -gt 0 ]; then
-  echo "error: no backlog item matched these keys in $MAIN_BACKLOG: ${MISSING[*]}" >&2
+  echo "error: no backlog item matched these keys in $SRC_BACKLOG: ${MISSING[*]}" >&2
   FAILED=1
 fi
 if [ "$FAILED" -ne 0 ]; then
@@ -999,6 +1049,16 @@ REQUESTED_BATCH=$(receiver_wake_batch_id "$@") || {
   echo "error: receiver wake batch identity could not be recorded; nothing was moved" >&2
   exit 1
 }
+
+# A destination of main has no receiver endpoint to wake: the primary reads its
+# own backlog at its next supervision pass.
+NO_WAKE=0
+[ "$ID" != main ] || NO_WAKE=1
+
+if [ "${#TO_MOVE[@]}" -eq 0 ] && [ "$NO_WAKE" -eq 1 ]; then
+  echo "nothing to move: ${ALREADY[*]:-no keys} already present in $SUB_BACKLOG"
+  exit 0
+fi
 
 if [ "${#TO_MOVE[@]}" -eq 0 ]; then
   WAKE_PENDING_MARKER="$STATE/.backlog-handoff-$ID.wake-pending"
@@ -1020,7 +1080,7 @@ for key in "${TO_MOVE[@]}"; do
     printf 'error: refusing to hand off %s: non-2-space continuation line: %s\n' \
       "$key" "$line" >&2
     FAILED=1
-  done < <(backlog_key_noncanonical_body_lines "$MAIN_BACKLOG" "$key")
+  done < <(backlog_key_noncanonical_body_lines "$SRC_BACKLOG" "$key")
 done
 if [ "$FAILED" -ne 0 ]; then
   echo "       nothing was moved." >&2
@@ -1033,7 +1093,7 @@ if ! fm_tasks_axi_compatible; then
 fi
 
 WAKE_PENDING_MARKER="$STATE/.backlog-handoff-$ID.wake-pending"
-if [ -e "$WAKE_PENDING_MARKER" ] || [ -L "$WAKE_PENDING_MARKER" ]; then
+if [ "$NO_WAKE" -eq 0 ] && { [ -e "$WAKE_PENDING_MARKER" ] || [ -L "$WAKE_PENDING_MARKER" ]; }; then
   case "$(cat "$WAKE_PENDING_MARKER" 2>/dev/null || true)" in
   prepared:*:"$REQUESTED_BATCH") receiver_wake_discard_prepared "$ID" || exit 1 ;;
   prepared:*)
@@ -1048,16 +1108,18 @@ if [ -e "$WAKE_PENDING_MARKER" ] || [ -L "$WAKE_PENDING_MARKER" ]; then
     ;;
   esac
 fi
-receiver_wake_mark_prepared "$ID" "$REQUESTED_BATCH" || {
-  echo "error: receiver wake state for secondmate $ID could not be recorded; nothing was moved" >&2
-  exit 1
-}
+if [ "$NO_WAKE" -eq 0 ]; then
+  receiver_wake_mark_prepared "$ID" "$REQUESTED_BATCH" || {
+    echo "error: receiver wake state for secondmate $ID could not be recorded; nothing was moved" >&2
+    exit 1
+  }
+fi
 
 # Seed the destination with firstmate's standard three-section scaffold when it
 # does not exist yet, so the moved item lands under the right section. (Left to
 # create the file itself, tasks-axi mv writes its own `# Backlog` title format,
 # which is not firstmate's home-backlog convention.)
-mkdir -p "$SUB_HOME/data"
+mkdir -p "$(dirname "$SUB_BACKLOG")"
 SUB_CREATED=0
 if [ ! -f "$SUB_BACKLOG" ]; then
   printf '## In flight\n\n## Queued\n\n## Done\n' >"$SUB_BACKLOG"
@@ -1069,14 +1131,16 @@ fi
 # together and, on any failure, neither backlog's content changes - the only
 # cleanup is a scaffold we just created. tasks-axi writes both its success and
 # error output to stdout, so capture it and surface it only on failure.
-if ! MV_OUT=$(tasks-axi mv "${TO_MOVE[@]}" --file "$MAIN_BACKLOG" --to "$SUB_BACKLOG" 2>&1); then
+if ! MV_OUT=$(tasks-axi mv "${TO_MOVE[@]}" --file "$SRC_BACKLOG" --to "$SUB_BACKLOG" 2>&1); then
   if [ "$SUB_CREATED" -eq 1 ]; then
     rm -f "$SUB_BACKLOG"
   fi
-  receiver_wake_discard_prepared "$ID" || {
-    echo "error: tasks-axi mv failed and receiver wake state could not be cleared" >&2
-    exit 1
-  }
+  if [ "$NO_WAKE" -eq 0 ]; then
+    receiver_wake_discard_prepared "$ID" || {
+      echo "error: tasks-axi mv failed and receiver wake state could not be cleared" >&2
+      exit 1
+    }
+  fi
   if [ -n "$MV_OUT" ]; then
     printf '%s\n' "$MV_OUT" >&2
   fi
@@ -1085,13 +1149,19 @@ if ! MV_OUT=$(tasks-axi mv "${TO_MOVE[@]}" --file "$MAIN_BACKLOG" --to "$SUB_BAC
 fi
 
 echo "handed off ${#TO_MOVE[@]} item(s) to $ID: ${TO_MOVE[*]}"
+[ "$SRC_ID" = main ] || echo "  from secondmate $SRC_ID"
 echo "  into $SUB_BACKLOG"
-receiver_wake_promote_prepared "$ID" "$REQUESTED_BATCH" || {
-  echo "error: handed off work to secondmate $ID, but durable receiver wake state could not be recorded" >&2
-  exit 1
-}
-wake_pending_secondmate_receiver "$ID" || exit 1
+if [ "$NO_WAKE" -eq 0 ]; then
+  receiver_wake_promote_prepared "$ID" "$REQUESTED_BATCH" || {
+    echo "error: handed off work to secondmate $ID, but durable receiver wake state could not be recorded" >&2
+    exit 1
+  }
+  wake_pending_secondmate_receiver "$ID" || exit 1
+fi
 if [ "${#ALREADY[@]}" -gt 0 ]; then
   echo "  already present (skipped): ${ALREADY[*]}"
 fi
-warn_stale_public_commitments "$ID" "${TO_MOVE[@]}"
+# Only a main-to-mate move can leave a public commitment bound to main/<key>.
+if [ "$SRC_ID" = main ] && [ "$ID" != main ]; then
+  warn_stale_public_commitments "$ID" "${TO_MOVE[@]}"
+fi

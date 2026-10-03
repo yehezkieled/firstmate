@@ -337,11 +337,14 @@ That scope is all card types, because the captured payload carries no card type.
 
 ### Remote-secondmate cards
 
-Owner-aware routing for remote-secondmate decision cards is tracked separately.
-That follow-up must query landedness and route reconciliation in the authoritative secondmate home while honoring the remote and local consistency principle.
-Until then, an absent main-home task passes through this hygiene check unchanged.
-Its Reconcile selection remains announced but cannot create a main-home request, because the main intake refuses an absent task.
-For a main-home call, the reconcile option is the recovery path for whatever still slips through.
+A call held in a registered secondmate home is owned by that home, and the main keyed-answer and reconcile-request intakes route to it.
+When a task is absent from the main backlog, `bin/fm-ticket-lib.sh` finds the one secondmate backlog that carries it, and the intake hands the answer or request over stdin to that home's own `fm-captain-hold.sh`.
+The owner closes or records it under its own locks and publishes the resolution on its parent channel.
+A routed reconcile request carries the source id, and the owner verifies that source's binding again in its parent's binding store through its local parent route, so a reconcile request for a call held in a remote secondmate is refused as unsupported by the sending home and is reconciled in that home instead.
+This home's own exact, legacy, and migrated holds resolve first, and only a key none of them resolves is routed.
+A task that no readable home carries is still refused as absent, an ambiguous owner or an unreadable secondmate home is skipped with nothing recorded, and a failed delivery is reported so the same answer can be retried.
+The single-task `answer` and `reconcile close|note` commands take file arguments, so they run in the owning home directly.
+Landedness hygiene for a main-home card is unchanged, and the reconcile option remains the recovery path for whatever still slips through.
 
 ## Structured read surfaces
 
@@ -393,7 +396,7 @@ Three accepted limits remain deliberate:
 - A remote or secondmate hold retains the producer home's age and aging decision from the summary's capture time and threshold rather than being recomputed by the parent.
 - A rare concurrent answer-close and re-hold race can leave the newly re-held task without its age basis.
 - Cross-home summaries remain bounded by `FM_SNAPSHOT_SECONDMATE_DECISIONS` and `FM_SNAPSHOT_SECONDMATE_QUEUED`.
-  A remote deferred hold beyond those bounds is not exported, so it can be neither gated nor revealed.
+  A remote deferred hold beyond those bounds is not exported in the rollup, so it is not gated; `fm-fleet-snapshot.sh --secondmate-page` reads the omitted rows on demand.
 
 Re-holding through the wrapper with `--until` remains the durable fix rather than relying on the projection safety net.
 
