@@ -237,6 +237,8 @@ DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 # shellcheck source=bin/fm-parent-channel-lib.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/fm-parent-channel-lib.sh"
+# shellcheck source=bin/fm-ticket-lib.sh
+. "$SCRIPT_DIR/fm-ticket-lib.sh"
 
 PARENT_HOLD_PUBLISHED=0
 publish_parent_hold() {  # <task-id> <occurrence> <verb> <note>
@@ -1313,10 +1315,55 @@ sanitize_reconcile_provenance() {
   printf '%s' "$1" | tr '\n\r\t' '   ' | LC_ALL=C tr -d '\000-\037\177' | cut -c1-1024
 }
 
+# --- owner-aware routing ------------------------------------------------------
+#
+# A task absent from this home's backlog may be owned by a registered secondmate
+# (bin/fm-ticket-lib.sh owns the lookup). A keyed answer or a reconcile request
+# for it is then handed to the owner's own copy of this script, which closes or
+# records it in the owner's backlog under the owner's locks and publishes the
+# resolution on the owner's parent channel. Only the answer and request intake
+# cross: they ride stdin, so they work for a local mate and a remote mate alike.
+# A remote mate's answer-by-file and reconcile close or note take file paths,
+# which cannot cross, so they refuse with the owner named.
+
+# Prints the owner id and returns 0 when a registered mate carries <task-id>.
+# Returns 1 when none does, 2 when several do or none could be read.
+mate_owner_of() {  # <task-id>
+  local rc=0
+  fm_ticket_locate "$DATA" "$1" --mates-only || rc=$?
+  case "$rc" in
+    0) printf '%s\n' "$FM_TICKET_OWNER"; return 0 ;;
+    2) return 2 ;;
+  esac
+  [ -z "$FM_TICKET_UNREADABLE" ] || return 2
+  return 1
+}
+
+# Hand one keyed answer to its owning mate; the mate's closed:/skipped: line is
+# relayed. Prints the result lines and returns 0 closed, 1 skipped.
+delegate_keyed_answer() {  # <owner> <key> <answer> <label> <mode> <source>
+  local owner=$1 key=$2 answer=$3 label=$4 mode=$5 source=$6 out rc=0 line closed=0
+  out=$(printf '%s\t%s\t%s\t%s\n' "$key" "$answer" "$label" "$mode" \
+    | fm_ticket_run_in_mate "$DATA" "$owner" fm-captain-hold.sh answers --any-origin \
+      --source "$source (routed to $owner)" 2>&1) || rc=$?
+  while IFS= read -r line; do
+    case "$line" in
+      closed:\ *) printf '%s\n' "$line"; closed=1 ;;
+      skipped:\ * | refused:\ *) printf '%s\n' "$line" ;;
+    esac
+  done <<< "$out"
+  if [ "$closed" -eq 1 ]; then return 0; fi
+  if ! printf '%s\n' "$out" | grep -q '^\(skipped\|refused\): '; then
+    printf 'skipped: %s (owner %s could not be reached or gave no answer, exit %s; nothing was recorded, retry the same answer)\n' \
+      "$key" "$owner" "$rc"
+  fi
+  return 1
+}
+
 command_answers() {
   local origin='' source='' row rest key answer label mode id show state hold_kind body digest legacy_digest legacy_key
   local recorded_digest recorded_mode occurrence tmp err closed=0 skipped=0 reason release_flag tab=$'\t'
-  local resolve_rc
+  local resolve_rc owner owner_rc
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --source) shift; source=${1:-} ;;
@@ -1367,6 +1414,23 @@ command_answers() {
         continue
         ;;
     esac
+    if ! task_show "$key"; then
+      owner_rc=0
+      owner=$(mate_owner_of "$key") || owner_rc=$?
+      if [ "$owner_rc" -eq 0 ]; then
+        if delegate_keyed_answer "$owner" "$key" "$answer" "$label" "${mode:-}" "$source"; then
+          closed=$((closed + 1))
+        else
+          skipped=$((skipped + 1))
+        fi
+        continue
+      fi
+      if [ "$owner_rc" -eq 2 ]; then
+        printf 'skipped: %s (owner is ambiguous or a secondmate home could not be read; nothing was recorded)\n' "$key"
+        skipped=$((skipped + 1))
+        continue
+      fi
+    fi
     resolve_rc=0
     id=$(resolve_entry "$origin" "$key" 2>"$err") || resolve_rc=$?
     id=${id%% *}
@@ -1519,19 +1583,24 @@ publish_parent_resolution_then_retire() {  # <task-id> <occurrence> <note>
 }
 
 command_reconcile_requests() {
-  local source_id='' source='' origin row id note provenance show show_status=0 created=0 skipped=0 tab=$'\t'
+  local source_id='' source='' origin row id note provenance show show_status=0 created=0 skipped=0 tab=$'\t' routed=0 owner owner_rc out line
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --source-id) shift; source_id=${1:-} ;;
       --source) shift; source=${1:-} ;;
+      --routed) routed=1 ;;
       *) usage >&2; exit 2 ;;
     esac
     shift
   done
-  validate_source_id "$source_id"
   [ -n "$source" ] || fail "--source provenance is required"
-  origin=$(read_binding "$source_id") || fail "cannot verify the binding for source $source_id"
-  [ -n "$origin" ] || fail "source $source_id is not bound; no reconcile requests were created"
+  # --routed is the owner-side leg of an owner-aware request: the sending home
+  # already verified the source binding, so only the sender's provenance travels.
+  if [ "$routed" -eq 0 ]; then
+    validate_source_id "$source_id"
+    origin=$(read_binding "$source_id") || fail "cannot verify the binding for source $source_id"
+    [ -n "$origin" ] || fail "source $source_id is not bound; no reconcile requests were created"
+  fi
   require_tasks_axi
   while IFS= read -r row; do
     id=${row%%"$tab"*}
@@ -1551,7 +1620,19 @@ command_reconcile_requests() {
     if [ "$show_status" -eq 124 ]; then
       fail "the backlog backend exceeded its read bound reading $id"
     fi
-    if [ -z "$show" ]; then
+    if [ -z "$show" ] && [ "$routed" -eq 0 ] && { owner_rc=0; owner=$(mate_owner_of "$id") || owner_rc=$?; [ "$owner_rc" -eq 0 ]; }; then
+      out=$(printf '%s\t%s\n' "$id" "$note" \
+        | fm_ticket_run_in_mate "$DATA" "$owner" fm-captain-hold.sh reconcile-requests --routed \
+          --source "$source (routed to $owner)" 2>&1) || true
+      if printf '%s\n' "$out" | grep -q "^reconcile: $id\$"; then
+        printf 'reconcile: %s\n' "$id"
+        created=$((created + 1))
+      else
+        line=$(printf '%s\n' "$out" | grep '^refused: ' | head -1)
+        printf '%s\n' "${line:-refused: $id (owner $owner could not record the reconcile request; retry)}"
+        skipped=$((skipped + 1))
+      fi
+    elif [ -z "$show" ]; then
       printf 'refused: %s (absent)\n' "$id"
       skipped=$((skipped + 1))
     elif [ "$(show_field "$show" state)" = "done" ]; then

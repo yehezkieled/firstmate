@@ -337,11 +337,12 @@ That scope is all card types, because the captured payload carries no card type.
 
 ### Remote-secondmate cards
 
-Owner-aware routing for remote-secondmate decision cards is tracked separately.
-That follow-up must query landedness and route reconciliation in the authoritative secondmate home while honoring the remote and local consistency principle.
-Until then, an absent main-home task passes through this hygiene check unchanged.
-Its Reconcile selection remains announced but cannot create a main-home request, because the main intake refuses an absent task.
-For a main-home call, the reconcile option is the recovery path for whatever still slips through.
+A call held in a registered secondmate home is owned by that home, and the main keyed-answer and reconcile-request intakes route to it.
+When a task is absent from the main backlog, `bin/fm-ticket-lib.sh` finds the one secondmate backlog that carries it, and the intake hands the answer or request over stdin to that home's own `fm-captain-hold.sh`.
+The owner closes or records it under its own locks and publishes the resolution on its parent channel, so the behavior is identical for a local and a remote secondmate.
+A task that no readable home carries is still refused as absent, an ambiguous owner or an unreadable secondmate home is skipped with nothing recorded, and a failed delivery is reported so the same answer can be retried.
+The single-task `answer` and `reconcile close|note` commands take file arguments, so they run in the owning home directly.
+Landedness hygiene for a main-home card is unchanged, and the reconcile option remains the recovery path for whatever still slips through.
 
 ## Structured read surfaces
 

@@ -1344,6 +1344,170 @@ EOF
   pass "registry entry without (home: ...) fails cleanly with has no home"
 }
 
+# Two registered local mates under one throwaway primary: the fixture for the
+# reverse (mate to main) and lateral (mate to mate) directions.
+setup_two_mates() { # <home> <sub-a> <sub-b>
+  local home=$1 a=$2 b=$3 a_abs b_abs id abs
+  mkdir -p "$home/data" "$home/state"
+  seed_secondmate_home_marker "$a" alpha
+  seed_secondmate_home_marker "$b" beta
+  a_abs=$(cd "$a" && pwd -P)
+  b_abs=$(cd "$b" && pwd -P)
+  {
+    printf -- '- alpha - alpha work (home: %s; scope: alpha work; projects: alpha; added 2026-07-09)\n' "$a_abs"
+    printf -- '- beta - beta work (home: %s; scope: beta work; projects: beta; added 2026-07-09)\n' "$b_abs"
+  } > "$home/data/secondmates.md"
+  for id in alpha beta; do
+    abs=$a_abs
+    [ "$id" = alpha ] || abs=$b_abs
+    cat > "$home/state/$id.meta" <<EOF
+window=firstmate:fm-$id
+kind=secondmate
+harness=claude
+backend=tmux
+home=$abs
+worktree=$abs
+EOF
+    mkdir -p "$abs/data" "$abs/state"
+  done
+}
+
+test_reverse_handoff_moves_queued_work_from_a_mate_to_main() {
+  local home="$TMP_ROOT/rev-main" a="$TMP_ROOT/rev-a" b="$TMP_ROOT/rev-b" out rc=0
+  setup_two_mates "$home" "$a" "$b"
+  printf '## Queued\n\n## Done\n' > "$home/data/backlog.md"
+  cat > "$a/data/backlog.md" <<'EOF'
+## In flight
+- [ ] busy-item - running (repo: alpha)
+
+## Queued
+- [ ] back-item - returns to main (repo: alpha)
+  Body line that must travel with the item.
+
+## Done
+EOF
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-backlog-handoff.sh" --from alpha main back-item 2>&1) \
+    || fail "reverse handoff failed: $out"
+  assert_contains "$out" "handed off 1 item(s) to main" "reverse handoff did not report the move"
+  assert_grep 'back-item' "$home/data/backlog.md" "item did not land in the main backlog"
+  assert_grep 'Body line that must travel' "$home/data/backlog.md" "item body did not travel to main"
+  ! grep -q 'back-item' "$a/data/backlog.md" || fail "item still present in the source mate backlog"
+  [ "$(inbox_record_count "$home/state" alpha)" -eq 0 ] || fail "reverse handoff woke the source mate"
+
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-backlog-handoff.sh" --from alpha main back-item 2>&1) \
+    || fail "rerun of a landed reverse handoff failed: $out"
+  assert_contains "$out" "nothing to move" "rerun of a landed reverse handoff did not converge"
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-backlog-handoff.sh" --from alpha main no-such-item 2>&1) || rc=$?
+  [ "$rc" -ne 0 ] || fail "reverse handoff of an unknown key reported success: $out"
+  assert_contains "$out" "no backlog item matched" "an unknown key was not reported as missing from the source"
+
+  rc=0
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-backlog-handoff.sh" --from alpha main busy-item 2>&1) || rc=$?
+  [ "$rc" -ne 0 ] || fail "reverse handoff moved an in-flight item"
+  assert_contains "$out" "in-flight" "in-flight reverse handoff was not refused for its section"
+  assert_grep 'busy-item' "$a/data/backlog.md" "refused reverse handoff mutated the source"
+  pass "reverse handoff moves queued work to main, never wakes the source, and refuses in-flight work"
+}
+
+test_reverse_handoff_is_idempotent_once_the_item_is_in_main() {
+  local home="$TMP_ROOT/rev-idem-main" a="$TMP_ROOT/rev-idem-a" b="$TMP_ROOT/rev-idem-b" out
+  setup_two_mates "$home" "$a" "$b"
+  cat > "$home/data/backlog.md" <<'EOF'
+## Queued
+- [ ] already-home - already in main (repo: alpha)
+
+## Done
+EOF
+  printf '## Queued\n\n## Done\n' > "$a/data/backlog.md"
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-backlog-handoff.sh" --from alpha main already-home 2>&1) \
+    || fail "rerun of a landed reverse handoff failed: $out"
+  assert_contains "$out" "nothing to move" "idempotent reverse rerun did not converge"
+  [ "$(grep -c 'already-home' "$home/data/backlog.md")" -eq 1 ] || fail "idempotent rerun duplicated the item"
+  pass "a reverse handoff rerun converges when the item already reached main"
+}
+
+test_lateral_handoff_moves_between_mates_and_wakes_only_the_receiver() {
+  local home="$TMP_ROOT/lat-main" a="$TMP_ROOT/lat-a" b="$TMP_ROOT/lat-b" fakebin out
+  setup_two_mates "$home" "$a" "$b"
+  printf '## Queued\n\n## Done\n' > "$home/data/backlog.md"
+  cat > "$a/data/backlog.md" <<'EOF'
+## Queued
+- [ ] lat-item - moves sideways (repo: beta)
+  Lateral body.
+
+## Done
+EOF
+  printf '## Queued\n\n## Done\n' > "$b/data/backlog.md"
+  fakebin=$(make_fake_tmux "$TMP_ROOT/lat-fake")
+  out=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" PATH="$fakebin:$PATH" \
+    FM_FAKE_TMUX_WINDOW='firstmate:fm-beta' \
+    FM_FAKE_TMUX_LOG="$TMP_ROOT/lat-tmux.log" \
+    FM_FAKE_TMUX_CAPTURE="$TMP_ROOT/lat-fake/pane.txt" \
+    FM_SEND_SETTLE=0 FM_SEND_SLEEP=0 FM_SEND_RETRIES=1 \
+    "$ROOT/bin/fm-backlog-handoff.sh" --from alpha beta lat-item 2>&1) \
+    || fail "lateral handoff failed: $out"
+  assert_grep 'lat-item' "$b/data/backlog.md" "item did not reach the receiving mate"
+  assert_grep 'Lateral body' "$b/data/backlog.md" "item body did not reach the receiving mate"
+  ! grep -q 'lat-item' "$a/data/backlog.md" || fail "item still present in the source mate"
+  ! grep -q 'lat-item' "$home/data/backlog.md" || fail "lateral handoff leaked the item into main"
+  [ "$(inbox_record_count "$home/state" beta)" -eq 1 ] || fail "receiving mate was not woken exactly once"
+  [ "$(inbox_record_count "$home/state" alpha)" -eq 0 ] || fail "source mate was woken"
+  pass "lateral handoff moves a queued item between mates and wakes only the receiver"
+}
+
+test_reverse_and_lateral_refuse_bad_shapes() {
+  local home="$TMP_ROOT/bad-main" a="$TMP_ROOT/bad-a" b="$TMP_ROOT/bad-b" out rc=0
+  setup_two_mates "$home" "$a" "$b"
+  printf '## Queued\n\n## Done\n' > "$home/data/backlog.md"
+  printf '## Queued\n- [ ] x-item - t (repo: a)\n\n## Done\n' > "$a/data/backlog.md"
+  printf '## Queued\n\n## Done\n' > "$b/data/backlog.md"
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-backlog-handoff.sh" --from alpha alpha x-item 2>&1) || rc=$?
+  [ "$rc" -ne 0 ] || fail "handoff to the same home succeeded"
+  assert_contains "$out" "same home" "same-home handoff was not named"
+  rc=0
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-backlog-handoff.sh" --from ghost beta x-item 2>&1) || rc=$?
+  [ "$rc" -ne 0 ] || fail "handoff from an unregistered mate succeeded"
+  assert_grep 'x-item' "$a/data/backlog.md" "refused handoff mutated the source"
+  # A remote mate cannot be a source or a lateral destination.
+  printf -- '- rem - remote (host: h; root: /nonexistent; home: /nonexistent/home; scope: s; projects: p; added 2026-07-09)\n' \
+    >> "$home/data/secondmates.md"
+  rc=0
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-backlog-handoff.sh" --from alpha rem x-item 2>&1) || rc=$?
+  [ "$rc" -ne 0 ] || fail "lateral handoff to a remote mate succeeded"
+  assert_contains "$out" "remote secondmate can only receive work from main" "remote lateral refusal was not named"
+  rc=0
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-backlog-handoff.sh" --from rem main x-item 2>&1) || rc=$?
+  [ "$rc" -ne 0 ] || fail "reverse handoff from a remote mate succeeded"
+  assert_grep 'x-item' "$a/data/backlog.md" "refused remote handoff mutated the source"
+  pass "same-home, unknown-source and remote reverse or lateral handoffs are refused untouched"
+}
+
+test_opposite_direction_handoffs_do_not_deadlock() {
+  local home="$TMP_ROOT/dl-main" a="$TMP_ROOT/dl-a" b="$TMP_ROOT/dl-b" fakebin p1 p2 r1 r2
+  setup_two_mates "$home" "$a" "$b"
+  printf '## Queued\n\n## Done\n' > "$home/data/backlog.md"
+  printf '## Queued\n- [ ] a-to-b - t (repo: a)\n\n## Done\n' > "$a/data/backlog.md"
+  printf '## Queued\n- [ ] b-to-a - t (repo: b)\n\n## Done\n' > "$b/data/backlog.md"
+  fakebin=$(make_fake_tmux "$TMP_ROOT/dl-fake")
+  export FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT"
+  export FM_FAKE_TMUX_WINDOW='firstmate:fm-alpha
+firstmate:fm-beta'
+  export FM_FAKE_TMUX_LOG="$TMP_ROOT/dl-tmux.log" FM_FAKE_TMUX_CAPTURE="$TMP_ROOT/dl-fake/pane.txt"
+  PATH="$fakebin:$PATH" "$ROOT/bin/fm-backlog-handoff.sh" --from alpha beta a-to-b >"$TMP_ROOT/dl-1.out" 2>&1 &
+  p1=$!
+  PATH="$fakebin:$PATH" "$ROOT/bin/fm-backlog-handoff.sh" --from beta alpha b-to-a >"$TMP_ROOT/dl-2.out" 2>&1 &
+  p2=$!
+  r1=0
+  r2=0
+  wait "$p1" || r1=$?
+  wait "$p2" || r2=$?
+  unset FM_HOME FM_ROOT_OVERRIDE FM_FAKE_TMUX_WINDOW FM_FAKE_TMUX_LOG FM_FAKE_TMUX_CAPTURE
+  [ "$r1" -eq 0 ] && [ "$r2" -eq 0 ] || fail "opposite handoffs failed ($r1/$r2): $(cat "$TMP_ROOT/dl-1.out" "$TMP_ROOT/dl-2.out")"
+  assert_grep 'a-to-b' "$b/data/backlog.md" "a-to-b did not land in beta"
+  assert_grep 'b-to-a' "$a/data/backlog.md" "b-to-a did not land in alpha"
+  pass "opposite-direction lateral handoffs both complete without deadlocking"
+}
+
 test_handoff_wakes_live_local_receiver
 test_failed_wake_retries_when_the_item_is_already_present
 test_known_receiver_failure_remains_retryable_after_grace
@@ -1368,5 +1532,10 @@ test_registry_home_with_pre_home_parentheses
 test_registry_home_missing_field_fails_cleanly
 test_handoff_warns_when_a_moved_item_still_owes_a_public_reply
 test_handoff_is_silent_about_public_commitments_without_the_relay
+test_reverse_handoff_moves_queued_work_from_a_mate_to_main
+test_reverse_handoff_is_idempotent_once_the_item_is_in_main
+test_lateral_handoff_moves_between_mates_and_wakes_only_the_receiver
+test_reverse_and_lateral_refuse_bad_shapes
+test_opposite_direction_handoffs_do_not_deadlock
 
 echo "ALL TESTS PASSED"

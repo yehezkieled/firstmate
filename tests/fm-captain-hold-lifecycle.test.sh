@@ -1387,6 +1387,53 @@ EOF
 # the script itself, keyed per hold occurrence, so a re-held task opens and
 # closes a distinct parent decision and a retry never duplicates a line. A main
 # home publishes nothing anywhere.
+test_owner_aware_answers_and_reconcile_requests_reach_a_mate_owned_call() {
+  local parent mate channel out decision
+  parent=$(make_home owner-parent)
+  mate="$TMP_ROOT/owner-mate-home"
+  mkdir -p "$mate/data" "$mate/state" "$mate/config" "$mate/projects" "$mate/bin"
+  cp "$ROOT/.tasks.toml" "$mate/.tasks.toml"
+  printf '# Synthetic secondmate home\n' > "$mate/AGENTS.md"
+  printf 'owner-mate\n' > "$mate/.fm-secondmate-home"
+  printf 'schema=fm-secondmate-parent.v1\nroute=local\nparent_home=%s\n' "$parent" \
+    > "$mate/.fm-secondmate-parent"
+  printf '## In flight\n\n## Queued\n\n## Done\n' > "$mate/data/backlog.md"
+  mate=$(cd "$mate" && pwd -P)
+  printf -- '- owner-mate - owner work (home: %s; scope: owner work; projects: sample; added 2026-07-09)\n' \
+    "$mate" > "$parent/data/secondmates.md"
+  cp -R "$parent/fakebin" "$mate/fakebin"
+  channel="$parent/state/owner-mate.status"
+  run_captain "$mate" hold owned-call --title "Choose the owned thing" --reason "owner choice pending" \
+    --repo sample >/dev/null || fail "mate hold failed"
+
+  out=$(printf 'owned-call\tgo with B\tOption B\n' \
+    | run_captain "$parent" answers --any-origin --source "owner-aware fixture") \
+    || fail "owner-aware answer was refused: $out"
+  assert_contains "$out" "closed: owned-call" "the main intake did not close the mate-owned call"
+  assert_contains "$(tasks_in "$mate" show owned-call --full)" "state: done" "the owner's task was not closed"
+  assert_grep 'resolved [key=captain-hold-owned-call-1]' \
+    <(sed -E 's/ \[at=[0-9]+\]//' "$channel") "the owner's resolution did not reach the parent channel"
+  out=$(printf 'owned-call\tgo with B\tOption B\n' \
+    | run_captain "$parent" answers --any-origin --source "owner-aware fixture") || true
+  assert_not_contains "$out" "(absent)" "a replayed answer fell back to the absent refusal"
+
+  run_captain "$mate" hold owned-two --title "Second owned thing" --reason "second pending" \
+    --repo sample >/dev/null || fail "second mate hold failed"
+  run_captain "$parent" bind owner-src >/dev/null || fail "could not bind the fixture source"
+  out=$(printf 'owned-two\tnote text\n' \
+    | run_captain "$parent" reconcile-requests --source-id owner-src --source "owner-aware reconcile") \
+    || fail "owner-aware reconcile request was refused: $out"
+  assert_contains "$out" "reconcile: owned-two" "the reconcile request was not accepted"
+  [ -f "$mate/state/reconcile-requests/owned-two.request" ] \
+    || fail "the reconcile request was not recorded in the owner's home"
+  [ ! -e "$parent/state/reconcile-requests/owned-two.request" ] \
+    || fail "the reconcile request was recorded in the wrong home"
+  out=$(printf 'ghost-call\tx\n' \
+    | run_captain "$parent" reconcile-requests --source-id owner-src --source "owner-aware reconcile") || true
+  assert_contains "$out" "refused: ghost-call (absent)" "a key owned by no home was not refused as absent"
+  pass "keyed answers and reconcile requests for a call a mate owns are applied in the owner's home"
+}
+
 test_secondmate_home_publishes_holds_and_answers() {
   local parent mate fakebin channel decision out
   parent=$(make_home parent-channel)
@@ -4690,3 +4737,4 @@ test_verify_names_the_unresolvable_legacy_id_once
 test_verify_resolves_a_pre_collapse_key_through_its_derived_marker
 test_captain_hold_mutations_address_the_beads_backend
 test_hold_creates_a_captain_row_when_beads_requires_due_without_custom_type
+test_owner_aware_answers_and_reconcile_requests_reach_a_mate_owned_call

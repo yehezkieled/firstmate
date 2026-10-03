@@ -190,9 +190,16 @@ validate_positive_bound FM_SNAPSHOT_CREW_STATE_TIMEOUT "$FM_SNAPSHOT_CREW_STATE_
 validate_positive_bound FM_SNAPSHOT_LOCAL_READ_CONCURRENCY "$FM_SNAPSHOT_LOCAL_READ_CONCURRENCY"
 validate_positive_bound FM_SNAPSHOT_BUDGET "$FM_SNAPSHOT_BUDGET"
 validate_positive_bound FM_SNAPSHOT_SECONDMATE_MAX_BYTES "$FM_SNAPSHOT_SECONDMATE_MAX_BYTES"
-validate_positive_bound FM_SNAPSHOT_SECONDMATE_CHILDREN "$FM_SNAPSHOT_SECONDMATE_CHILDREN"
-validate_positive_bound FM_SNAPSHOT_SECONDMATE_QUEUED "$FM_SNAPSHOT_SECONDMATE_QUEUED"
-validate_positive_bound FM_SNAPSHOT_SECONDMATE_DECISIONS "$FM_SNAPSHOT_SECONDMATE_DECISIONS"
+# These three row bounds also accept 0, meaning every row (the paged view and a
+# deliberate full rollup); --unbounded on the home summary forces that too.
+for _bound in FM_SNAPSHOT_SECONDMATE_CHILDREN FM_SNAPSHOT_SECONDMATE_QUEUED FM_SNAPSHOT_SECONDMATE_DECISIONS; do
+  case "${!_bound}" in
+    ''|*[!0-9]*)
+      printf 'fm-fleet-snapshot: %s must be a non-negative integer (0 = every row)\n' "$_bound" >&2
+      exit 2
+      ;;
+  esac
+done
 validate_positive_bound FM_SNAPSHOT_TERMINAL_LINES "$FM_SNAPSHOT_TERMINAL_LINES"
 validate_positive_bound FM_SNAPSHOT_TERMINAL_BYTES "$FM_SNAPSHOT_TERMINAL_BYTES"
 validate_positive_bound FM_SNAPSHOT_TERMINAL_TIMEOUT "$FM_SNAPSHOT_TERMINAL_TIMEOUT"
@@ -235,7 +242,8 @@ esac
 usage() {
   cat <<'EOF'
 usage: fm-fleet-snapshot.sh --json
-       fm-fleet-snapshot.sh --secondmate-home-summary
+       fm-fleet-snapshot.sh --secondmate-home-summary [--unbounded]
+       fm-fleet-snapshot.sh --secondmate-page <id> [--surface <name>] [--offset N] [--limit N]
 
 Print a structured snapshot of the firstmate fleet.
 JSON is the stable machine-readable output contract. The default snapshot
@@ -256,6 +264,10 @@ queued with hold_reason, hold_kind, hold_until,
 hold_bucket, hold_age_days, and plural blocker fields for downstream
 projections. A captain hold is actionable only when every blocker is Done, any
 hold-until date has arrived, and an undated hold remains below the aging threshold.
+--unbounded lifts the row bounds. --secondmate-page prints one page of a
+registered secondmate's queued, decisions_open, active_children, or holds rows
+as fm-secondmate-page.v1 with the total, so rows the bounded rollup omitted stay
+reachable. Every row in the rollup and a page names its owning home in owner.
 Cross-home collection uses FM_SNAPSHOT_SECONDMATES (default 20, 0 lifts the
 count bound) and FM_SNAPSHOT_SECONDMATE_MAX_BYTES.
 Every sampled remote home's state/home-summary.json is fetched concurrently
@@ -288,10 +300,56 @@ since date, and re-holding with --until remains the durable deferral.
 EOF
 }
 
+# Page through one registered secondmate's rows past the bounded rollup. The
+# mate's own unbounded home summary is the source (local mates in place, remote
+# mates through fm-on.sh), every row carries its owner, and the page names the
+# total so a renderer knows when it has read everything.
+secondmate_page() { # <id> [--surface queued|decisions_open|active_children|holds] [--offset N] [--limit N]
+  local id=${1:-} surface=queued offset=0 limit=50 summary
+  [ "$#" -ge 1 ] || { usage >&2; return 2; }
+  shift
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --surface) shift; surface=${1:-} ;;
+      --offset) shift; offset=${1:-} ;;
+      --limit) shift; limit=${1:-} ;;
+      *) usage >&2; return 2 ;;
+    esac
+    shift
+  done
+  case "$surface" in queued|decisions_open|active_children|holds) ;; *)
+    echo "fm-fleet-snapshot: --surface must be queued, decisions_open, active_children, or holds" >&2; return 2 ;;
+  esac
+  case "$offset" in ''|*[!0-9]*) echo "fm-fleet-snapshot: --offset must be a non-negative integer" >&2; return 2 ;; esac
+  case "$limit" in ''|*[!0-9]*|0) echo "fm-fleet-snapshot: --limit must be a positive integer" >&2; return 2 ;; esac
+  case "$id" in ''|*[!A-Za-z0-9._-]*) echo "fm-fleet-snapshot: unsafe secondmate id: $id" >&2; return 2 ;; esac
+  command -v jq >/dev/null 2>&1 || { echo "fm-fleet-snapshot: jq not found" >&2; return 1; }
+  # shellcheck source=bin/fm-ticket-lib.sh
+  . "$SCRIPT_DIR/fm-ticket-lib.sh"
+  fm_ticket_registry_ids "$DATA" | grep -qx -- "$id" \
+    || { echo "fm-fleet-snapshot: $id is not a registered secondmate" >&2; return 1; }
+  summary=$(fm_ticket_run_in_mate "$DATA" "$id" fm-fleet-snapshot.sh --secondmate-home-summary --unbounded </dev/null) \
+    || { echo "fm-fleet-snapshot: could not read the home summary of $id" >&2; return 1; }
+  printf '%s' "$summary" | jq -c --arg id "$id" --arg surface "$surface" \
+    --argjson offset "$offset" --argjson limit "$limit" '
+    select(.schema == "fm-secondmate-home-summary.v1" and .valid == true)
+    | (.[$surface]) as $rows
+    | {schema:"fm-secondmate-page.v1",id:$id,surface:$surface,offset:$offset,limit:$limit,
+       total:($rows | length),
+       rows:($rows[$offset:($offset + $limit)] | map(. + {owner:$id}))}' \
+    | grep . || { echo "fm-fleet-snapshot: the home summary of $id is not valid" >&2; return 1; }
+}
+
 OUTPUT_MODE=json
 case "${1:---json}" in
   --json) ;;
-  --secondmate-home-summary) OUTPUT_MODE=secondmate-home-summary ;;
+  --secondmate-home-summary)
+    OUTPUT_MODE=secondmate-home-summary
+    if [ "${2:-}" = --unbounded ]; then
+      FM_SNAPSHOT_SECONDMATE_CHILDREN=0 FM_SNAPSHOT_SECONDMATE_QUEUED=0 FM_SNAPSHOT_SECONDMATE_DECISIONS=0
+    fi
+    ;;
+  --secondmate-page) shift; secondmate_page "$@"; exit $? ;;
   --contribution-input) OUTPUT_MODE=contribution-input ;;
   -h|--help) usage; exit 0 ;;
   *) usage >&2; exit 2 ;;
@@ -969,14 +1027,19 @@ main_inventory_json() {  # <backlog-json-file> <tasks-json-file>
 # validated parent read needs.
 # This mode never reads parent events or terminal text and never aggregates
 # nested secondmates.
+# A row bound of 0 means every row.
+row_bound() { # <bound>
+  if [ "$1" = 0 ]; then printf '1000000000'; else printf '%s' "$1"; fi
+}
+
 secondmate_home_summary_json() {  # <backlog-json-file> <tasks-json-file>
   jq -n \
     --arg generated "$SNAPSHOT_NOW" \
     --argjson generated_epoch "$SNAPSHOT_EPOCH" \
     --arg home "$FM_HOME" \
-    --argjson child_n "$FM_SNAPSHOT_SECONDMATE_CHILDREN" \
-    --argjson queued_n "$FM_SNAPSHOT_SECONDMATE_QUEUED" \
-    --argjson decisions_n "$FM_SNAPSHOT_SECONDMATE_DECISIONS" \
+    --argjson child_n "$(row_bound "$FM_SNAPSHOT_SECONDMATE_CHILDREN")" \
+    --argjson queued_n "$(row_bound "$FM_SNAPSHOT_SECONDMATE_QUEUED")" \
+    --argjson decisions_n "$(row_bound "$FM_SNAPSHOT_SECONDMATE_DECISIONS")" \
     --argjson landed_n "$FM_SNAPSHOT_SECONDMATE_LANDED_PER_HOME" \
     --slurpfile backlog "$1" \
     --slurpfile tasks "$2" --slurpfile contributions "$CONTRIBUTIONS_JSON_FILE" "$FM_LANDED_JQ_DEFS"'
@@ -1888,8 +1951,11 @@ secondmate_current_json() {  # <parent-tasks-json-file> <output-file>
          provenance:{selected:"structured-home",structured_home:$home,summary_source:$summary_source,summary_valid:$summary_valid,
            trust:(if $summary_valid then "complete" else "partial-structured" end),parent_event_role:"historical-only"},
          freshness:{status:$summary_freshness,observed_at:$observed,age_seconds:$summary_age},
-         active_children:$summary.active_children,
-         decisions_open:$summary.decisions_open,holds:$summary.holds,queued:$summary.queued,
+         owner:$id,
+         active_children:($summary.active_children | map(. + {owner:$id})),
+         decisions_open:($summary.decisions_open | map(. + {owner:$id})),
+         holds:($summary.holds | map(. + {owner:$id})),
+         queued:($summary.queued | map(. + {owner:$id})),
          contributions:($summary.contributions // null),
          landed:$summary.landed,endpoints:$summary.endpoints,counts:$summary.counts,omitted:$summary.omitted,
          parent_event:{raw:$event_raw,note:$event_note,age_seconds:$event_age,open_activities:$activities,open_decisions:$decisions,activity_scan:$activity_scan,reconciliation:$reconciliation},
@@ -2068,7 +2134,7 @@ jq -n \
      generated:$generated,
      fm_home:$fm_home,
      roots:{fm_root:$fm_root,state:$state,data:$data,config:$config,projects:$projects},
-     backlog:$backlog,
+     backlog:($backlog | .records |= (map(. + {owner:"main"}))),
      tasks:($tasks | map(. + {backlog:backlog_by_id(.id)})),
      main_inventory:$main_inventory,
      contributions:$contributions[0],

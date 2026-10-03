@@ -2524,6 +2524,55 @@ EOF
   pass "newest filed gates are selected before snapshot bounds"
 }
 
+test_rollup_names_owners_and_pages_past_the_secondmate_bounds() {
+  local home mate fakebin json page
+  home=$(make_home owner-paging)
+  : > "$home/data/secondmates.md"
+  printf '## In flight\n\n## Queued\n- [ ] main-item - Main ticket (repo: sample) (kind: ship) (since 2026-07-01)\n\n## Done\n' \
+    > "$home/data/backlog.md"
+  mate="$TMP_ROOT/owner-paging-mate"
+  make_valid_secondmate_home paged-mate "$mate"
+  append_secondmate_registry "$home" paged-mate "$mate"
+  cat > "$mate/data/backlog.md" <<'EOF'
+## In flight
+
+## Queued
+- [ ] q-one - First (repo: sample) (kind: ship) (since 2026-07-01)
+- [ ] q-two - Second (repo: sample) (kind: ship) (since 2026-07-02)
+- [ ] q-three - Third (repo: sample) (kind: ship) (since 2026-07-03)
+
+## Done
+EOF
+  fakebin=$(make_fakebin "$home")
+  PATH="$fakebin:$PATH" FM_SNAPSHOT_SECONDMATE_QUEUED=1 refresh_local_secondmate_ledgers "$home"
+  json=$(PATH="$fakebin:$PATH" FM_HOME="$home" FM_SNAPSHOT_NOW=2026-07-11T18:00:00Z \
+    FM_SNAPSHOT_SECONDMATE_QUEUED=1 "$ROOT/bin/fm-fleet-snapshot.sh" --json)
+  printf '%s' "$json" | jq -e '
+    ([.backlog.records[] | select(.id == "main-item")][0].owner) == "main"
+    and (.secondmate_current.records[] | select(.id == "paged-mate")
+      | (.queued | length) == 1 and (.queued | all(.owner == "paged-mate")) and .owner == "paged-mate"
+        and .counts.queued == 3
+        and (.omitted | any(.surface == "queued" and .count == 2)))
+  ' >/dev/null || fail "the rollup did not name owners or disclose the bound: $json"
+
+  page=$(PATH="$fakebin:$PATH" FM_HOME="$home" FM_SNAPSHOT_NOW=2026-07-11T18:00:00Z \
+    "$ROOT/bin/fm-fleet-snapshot.sh" --secondmate-page paged-mate --surface queued --offset 1 --limit 5)
+  printf '%s' "$page" | jq -e '
+    .schema == "fm-secondmate-page.v1" and .total == 3 and (.rows | length) == 2
+    and (.rows | all(.owner == "paged-mate"))
+  ' >/dev/null || fail "the page did not return the omitted rows: $page"
+  PATH="$fakebin:$PATH" FM_SNAPSHOT_SECONDMATE_QUEUED=0 refresh_local_secondmate_ledgers "$home"
+  json=$(PATH="$fakebin:$PATH" FM_HOME="$home" FM_SNAPSHOT_NOW=2026-07-11T18:00:00Z \
+    FM_SNAPSHOT_SECONDMATE_QUEUED=0 "$ROOT/bin/fm-fleet-snapshot.sh" --json)
+  printf '%s' "$json" | jq -e '
+    (.secondmate_current.records[] | select(.id == "paged-mate") | .queued | length) == 3
+  ' >/dev/null || fail "a 0 bound did not lift the queued bound: $json"
+  if PATH="$fakebin:$PATH" FM_HOME="$home" "$ROOT/bin/fm-fleet-snapshot.sh" --secondmate-page nobody >/dev/null 2>&1; then
+    fail "paging an unregistered secondmate succeeded"
+  fi
+  pass "the rollup names row owners and a secondmate's omitted rows stay reachable by page"
+}
+
 # A captain scanning Underway must be able to tell WHICH task a row is, and the
 # board orders Charted Next by the durable filed date, so both facts have to come
 # out of fleet state rather than being invented at render time.
@@ -3395,6 +3444,7 @@ test_working_captain_holds_keep_their_bucket_surfaces
 test_active_children_project_independent_of_home_captain_hold
 test_nameless_legacy_summary_uses_its_durable_identifier
 test_newest_filed_gates_are_selected_before_snapshot_bounds
+test_rollup_names_owners_and_pages_past_the_secondmate_bounds
 test_underway_and_gate_rows_carry_the_durable_name_and_filed_date
 test_mixed_secondmate_roles_partial_state_and_captain_readiness
 test_main_captain_readiness_matches_secondmate_projection
