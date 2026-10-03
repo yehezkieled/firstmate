@@ -1,0 +1,216 @@
+### S1 one-step new ticket lands in owning home
+
+$ [main] fm-ticket.sh new alpha Fix: login "button" #2 --key a-login --priority 1
+handed off 1 item(s) to alpha: a-login
+  into /tmp/fm-lab.2KtcnZ/alpha/data/backlog.md
+error: refusing fleet lifecycle from inside a no-mistakes gate worktree (/home/hezki/.no-mistakes/repos/e677c3fe7f2c.git)
+error: backlog delivery to secondmate alpha succeeded, but its receiver wake failed; retry a tracked remote wake with --resume-pending or a later new handoff, and retry a local wake by rerunning its handoff
+key=a-login
+owner=main
+status=pending-handoff
+detail=filed Queued in this home; rerun the same command to retry the handoff to alpha
+[exit 4]
+
+$ [main] fm-ticket.sh new alpha Fix: login "button" #2 --key a-login --priority 1
+key=a-login
+owner=alpha
+status=exists
+[exit 0]
+
+$ [main] fm-ticket.sh new gamma main side work --key m-work
+key=m-work
+owner=main
+status=filed
+[exit 0]
+
+$ [alpha] fm-ticket.sh new beta filed from alpha for beta --key b-task
+key=b-task
+owner=alpha
+status=filed
+[exit 0]
+--- alpha backlog
+## In flight
+
+## Queued
+- [ ] a-login - Fix: login "button" #2 (repo: alpha) (priority: 1) (since 2026-10-03)
+
+- [ ] b-task - filed from alpha for beta (repo: beta) (since 2026-10-03)
+## Done
+--- beta backlog
+## In flight
+
+## Queued
+
+## Done
+--- main backlog
+## In flight
+
+## Queued
+- [ ] m-work - main side work (repo: gamma) (since 2026-10-03)
+## Done
+
+### S2 owner lookup
+
+$ [main] fm-ticket.sh owner a-login --json
+{
+  "key": "a-login",
+  "owner": "alpha",
+  "section": "Queued",
+  "remote": false,
+  "home": "/tmp/fm-lab.2KtcnZ/alpha",
+  "candidates": [
+    "alpha"
+  ],
+  "unreadable": []
+}
+[exit 0]
+
+$ [alpha] fm-ticket.sh owner m-work
+key=m-work
+owner=main
+section=Queued
+remote=0
+home=
+candidates=main
+unreadable=
+[exit 0]
+
+$ [beta] fm-ticket.sh owner a-login
+key=a-login
+owner=alpha
+section=Queued
+remote=0
+home=
+candidates=alpha
+unreadable=
+[exit 0]
+
+$ [main] fm-ticket.sh owner nope
+key=nope
+owner=none
+section=
+remote=0
+home=
+candidates=
+unreadable=
+[exit 1]
+
+### S3 routed edits: main->mate, mate->main, mate->sibling, with ids
+
+$ [main] fm-ticket.sh edit a-login --request-id req-main-to-alpha --note captain wants this soon --priority 0
+request=req-main-to-alpha
+status=applied
+owner=alpha
+at=1790989806
+detail=2 edit(s) applied
+[exit 0]
+
+$ [alpha] fm-ticket.sh edit m-work --request-id req-alpha-to-main --title main side work (renamed by alpha) --note from alpha
+request=req-alpha-to-main
+status=applied
+owner=main
+at=1790989807
+detail=2 edit(s) applied
+[exit 0]
+
+$ [beta] fm-ticket.sh edit a-login --request-id req-beta-to-alpha --note sibling note
+request=req-beta-to-alpha
+status=applied
+owner=alpha
+at=1790989809
+detail=1 edit(s) applied
+[exit 0]
+--- a-login in alpha
+task:
+  id: a-login
+  title: "Fix: login \"button\" #2"
+  state: queued
+  blocked: no
+  blocked_by: none
+  held: no
+  hold_reason: "-"
+  hold_kind: "-"
+  hold_until: "-"
+  kind: task
+  repo: alpha
+  priority: 0
+  created: 2026-10-03
+  closed: "-"
+  deps: none
+  links: none
+  body: "Note (main, 2026-10-03, request req-main-to-alpha): captain wants this soon\nTicket request req-main-to-alpha applied (eefe9adbaa7aeee8).\nNote (beta, 2026-10-03, request req-beta-to-alpha): sibling note\nTicket request req-beta-to-alpha applied (3591a2d76544b3b2)."
+--- m-work in main
+task:
+  id: m-work
+  title: main side work (renamed by alpha)
+  state: queued
+  blocked: no
+  blocked_by: none
+  held: no
+  hold_reason: "-"
+  hold_kind: "-"
+  hold_until: "-"
+  kind: task
+  repo: gamma
+  priority: "-"
+  created: 2026-10-03
+  closed: "-"
+  deps: none
+  links: none
+  body: "Note (alpha, 2026-10-03, request req-alpha-to-main): from alpha\nTicket request req-alpha-to-main applied (13fdf62853b997da)."
+
+### S4 idempotent replay and status
+
+$ [main] fm-ticket.sh edit a-login --request-id req-main-to-alpha --note captain wants this soon --priority 0
+request=req-main-to-alpha
+status=replay
+owner=alpha
+at=1790989809
+detail=already applied: 2 edit(s) applied
+[exit 0]
+
+$ [main] fm-ticket.sh status req-main-to-alpha
+request=req-main-to-alpha
+status=replay
+owner=alpha
+at=1790989809
+detail=already applied: 2 edit(s) applied
+[exit 0]
+
+$ [main] fm-ticket.sh edit a-login --request-id req-main-to-alpha --note DIFFERENT content
+fm-ticket: request id req-main-to-alpha was already used with different content
+[exit 2]
+--- note count for 'captain wants this soon' in alpha backlog: 1
+/tmp/fm-lab.2KtcnZ/alpha/state/ticket-receipts:
+req-beta-to-alpha.receipt
+req-main-to-alpha.receipt
+
+/tmp/fm-lab.2KtcnZ/main/state/ticket-requests:
+req-main-to-alpha.req
+req-main-to-alpha.result
+
+### S5 adversarial: invalid, closed, absent, captain-unhold
+
+$ [main] fm-ticket.sh edit a-login --priority 9
+request=r-ef9b9b462b816db6
+status=rejected
+owner=alpha
+at=1790989810
+detail=priority must be an integer 0-4
+[exit 2]
+
+$ [main] fm-ticket.sh edit nope --note x
+request=r-298132270492642d
+status=absent
+owner=none
+at=1790989810
+detail=no home carries ticket nope
+[exit 3]
+
+$ [main] fm-ticket.sh edit b-done --note late
+request=r-180ef09006cba847
+status=rejected
+owner=beta
+at=1790989810
+detail=ticket b-done is closed
+[exit 2]

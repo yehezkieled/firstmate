@@ -1,0 +1,94 @@
+### S9 owner-aware keyed answer from main closes a decision held in mate alpha
+
+$ [alpha] bin/fm-captain-hold.sh hold alpha-call --title Pick the alpha DB --reason captain must choose --repo alpha
+alpha-call
+[exit 0]
+$ printf 'alpha-call\tuse postgres\tPostgres\n' | [main] fm-captain-hold.sh answers --any-origin --source lab
+closed: alpha-call
+answers: closed=1 skipped=0
+[exit 0]
+
+$ [alpha] bin/fm-tasks-axi.sh show alpha-call
+task:
+  id: alpha-call
+  title: Pick the alpha DB
+  state: done
+  blocked: no
+  blocked_by: none
+  held: no
+  hold_reason: "captain must choose"
+  hold_kind: captain
+  hold_until: "-"
+  kind: captain
+  repo: alpha
+  priority: "-"
+  created: "-"
+  closed: 2026-10-03
+  deps: none
+  links: none
+  body: "Resolution recorded by fm-captain-hold.\nDecision digest: 5b5033ca4435d2201fbbc9237eedd3c1e08172e62d09d37055f56e174cfbb0e6\nResolution mode: answered\n\nCaptain decision:\nCaptain answered this call through lab (routed to alpha).\nTask: alpha-call\nAnswer: use postgres\nAnswer as shown to the captain: Postgres"
+[exit 0]
+--- parent channel /tmp/fm-lab.2KtcnZ/main/state/alpha.status:
+needs-decision [key=captain-hold-alpha-call-1] [at=1790989891]: captain hold alpha-call: captain must choose
+resolved [key=captain-hold-alpha-call-1] [at=1790989893]: captain hold alpha-call: answered
+--- replay of same answer:
+closed: alpha-call
+answers: closed=1 skipped=0
+[exit 0]
+
+### S10 owner-aware reconcile request routed into alpha
+
+$ [alpha] bin/fm-captain-hold.sh hold alpha-two --title Second alpha call --reason pending --repo alpha
+alpha-two
+[exit 0]
+
+$ [main] bin/fm-captain-hold.sh bind lab-src
+bound: lab-src -> (any)
+[exit 0]
+reconcile: alpha-two
+reconcile-requests: created=1 skipped=0
+[exit 0]
+alpha-two.request
+ls: cannot access '/tmp/fm-lab.2KtcnZ/main/state/reconcile-requests/': No such file or directory
+--- adversarial: forged routed request into alpha with an unbound source
+fm-captain-hold: source forged-src is not bound; no reconcile requests were created
+[exit 1]
+--- adversarial: absent key
+refused: ghost-call (absent)
+reconcile-requests: created=0 skipped=1
+[exit 1]
+
+### S11 captain hold can't be released by a routed --unhold
+
+$ [alpha] bin/fm-captain-hold.sh hold alpha-three --title Third --reason pending --repo alpha
+alpha-three
+[exit 0]
+
+$ [main] bin/fm-ticket.sh edit alpha-three --unhold
+request=r-1001341b5f1eff68
+status=rejected
+owner=alpha
+at=1790989896
+detail=a captain hold is released only by its keyed answer
+[exit 2]
+
+$ [alpha] bin/fm-tasks-axi.sh show alpha-three
+task:
+  id: alpha-three
+  title: Third
+  state: queued
+  blocked: no
+  blocked_by: none
+  held: yes
+  hold_reason: "pending"
+  hold_kind: captain
+  hold_until: "-"
+  kind: captain
+  repo: alpha
+  priority: "-"
+  created: 2026-10-03
+  closed: "-"
+  deps: none
+  links: none
+  body: "Captain hold set: 2026-10-03T01:11:35Z"
+[exit 0]

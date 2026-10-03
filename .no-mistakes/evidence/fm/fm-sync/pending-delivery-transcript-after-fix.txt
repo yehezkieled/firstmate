@@ -1,0 +1,34 @@
+### S12 owner unreachable -> request journaled pending; resume-pending delivers once it is back
+$ chmod 000 /tmp/fm-lab.2KtcnZ/beta/data/backlog.md   # beta's backlog unreadable
+
+$ [main] bin/fm-ticket.sh edit bq-3 --request-id req-while-down-2 --note queued while beta was down
+request=req-while-down-2
+status=pending
+owner=unknown
+at=1790989994
+detail=ticket bq-3 was not found and these homes could not be read: beta
+[exit 4]
+
+$ [main] bin/fm-ticket.sh status req-while-down-2
+request=req-while-down-2
+status=pending
+owner=unknown
+at=1790989994
+detail=ticket bq-3 was not found and these homes could not be read: beta
+[exit 0]
+$ chmod 644 /tmp/fm-lab.2KtcnZ/beta/data/backlog.md   # beta back
+
+$ [main] bin/fm-ticket.sh resume-pending
+[exit 0]
+
+$ [main] bin/fm-ticket.sh status req-while-down-2
+request=req-while-down-2
+status=applied
+owner=beta
+at=1790989995
+detail=1 edit(s) applied
+[exit 0]
+
+$ [main] bin/fm-ticket.sh resume-pending
+[exit 0]
+note occurrences in beta: 1

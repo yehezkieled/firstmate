@@ -1,0 +1,16 @@
+### S8 rollup with explicit owners and raised/paged bounds (beta has 7 queued)
+--- bounded rollup FM_SNAPSHOT_SECONDMATE_QUEUED=2: per-row owners + secondmate queued rows
+[exit 0]
+[{"id":"a-login","owner":"main"},{"id":"alpha","owner":"alpha"},{"id":"b-task","owner":"beta"},{"id":"beta","owner":"beta"},{"id":"bq-1","owner":"beta"},{"id":"bq-2","owner":"beta"},{"id":"bq-3","owner":"beta"},{"id":"bq-4","owner":"beta"},{"id":"bq-5","owner":"beta"},{"id":"bq-6","owner":"beta"},{"id":"m-work","owner":"main"}]
+{"home":"/tmp/fm-lab.2KtcnZ/alpha","queued":[],"rest":{"omitted":[]}}
+{"home":"/tmp/fm-lab.2KtcnZ/beta","queued":["b-task","bq-1","bq-2","bq-3","bq-4","bq-5","bq-6"],"rest":{"omitted":[]}}
+--- raised bound FM_SNAPSHOT_SECONDMATE_QUEUED=0 (every row)
+["b-task","beta","bq-1","bq-2","bq-3","bq-4","bq-5","bq-6"]
+
+$ [main] bin/fm-fleet-snapshot.sh --secondmate-page beta --surface queued --offset 2 --limit 3
+{"schema":"fm-secondmate-page.v1","id":"beta","surface":"queued","offset":2,"limit":3,"total":7,"rows":[{"id":"bq-2","title":"beta queued 2","blocked_by":null,"blocked_by_ids":[],"unresolved_blocker_ids":[],"blocked_reason":null,"hold_reason":null,"hold_kind":null,"hold_until":null,"hold_bucket":null,"hold_age_days":0,"captain_actionable":false,"repo":"beta","kind":null,"since":"2026-10-03","owner":"beta"},{"id":"bq-3","title":"beta queued 3","blocked_by":null,"blocked_by_ids":[],"unresolved_blocker_ids":[],"blocked_reason":null,"hold_reason":null,"hold_kind":null,"hold_until":null,"hold_bucket":null,"hold_age_days":0,"captain_actionable":false,"repo":"beta","kind":null,"since":"2026-10-03","owner":"beta"},{"id":"bq-4","title":"beta queued 4","blocked_by":null,"blocked_by_ids":[],"unresolved_blocker_ids":[],"blocked_reason":null,"hold_reason":null,"hold_kind":null,"hold_until":null,"hold_bucket":null,"hold_age_days":0,"captain_actionable":false,"repo":"beta","kind":null,"since":"2026-10-03","owner":"beta"}]}
+[exit 0]
+
+### S8b mate publishes a bounded summary (FM_SNAPSHOT_SECONDMATE_QUEUED=2); main rollup shows bound + omission, page still reaches all
+{"id":"beta","queued":[{"id":"b-task","owner":"beta"},{"id":"bq-1","owner":"beta"}],"counts":{"active_children":0,"decisions_open":0,"holds":0,"queued":7,"landed":1,"endpoints":0},"omitted":[{"surface":"queued","count":5}]}
+{"total":7,"ids":["b-task","bq-1","bq-2","bq-3","bq-4","bq-5","bq-6"],"owners":["beta"]}

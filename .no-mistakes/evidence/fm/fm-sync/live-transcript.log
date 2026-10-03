@@ -1,0 +1,325 @@
+
+### S1 owner lookup: main sees mate-owned ticket; mate sees primary-owned ticket via parent
+$ [FM_HOME=main] /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M3ZJBRF7N4Z5P53Z8YC5ZPYC/bin/fm-ticket.sh owner a-one
+key=a-one
+owner=alpha
+section=Queued
+remote=0
+home=/tmp/fm-lab.HAeuSG/alpha
+candidates=alpha
+unreadable=
+(exit 0)
+$ [FM_HOME=alpha] /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M3ZJBRF7N4Z5P53Z8YC5ZPYC/bin/fm-ticket.sh owner m-one
+key=m-one
+owner=main
+section=Queued
+remote=0
+home=
+candidates=main
+unreadable=
+(exit 0)
+$ [FM_HOME=beta] /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M3ZJBRF7N4Z5P53Z8YC5ZPYC/bin/fm-ticket.sh owner a-one
+key=a-one
+owner=alpha
+section=Queued
+remote=0
+home=
+candidates=alpha
+unreadable=
+(exit 0)
+$ [FM_HOME=main] /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M3ZJBRF7N4Z5P53Z8YC5ZPYC/bin/fm-ticket.sh owner ghost-key
+key=ghost-key
+owner=none
+section=
+remote=0
+home=
+candidates=
+unreadable=
+(exit 1)
+
+### S2 main edits a mate-owned ticket: routed request applied in owner, acked, idempotent replay
+$ [FM_HOME=main] /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M3ZJBRF7N4Z5P53Z8YC5ZPYC/bin/fm-ticket.sh edit a-one --request-id hive-req-1 --title Alpha ticket v2 --priority 1 --note from hive desk --block a-dep
+request=hive-req-1
+status=applied
+owner=alpha
+at=1790991277
+detail=4 edit(s) applied
+(exit 0)
+$ [FM_HOME=main] /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M3ZJBRF7N4Z5P53Z8YC5ZPYC/bin/fm-ticket.sh edit a-one --request-id hive-req-1 --title Alpha ticket v2 --priority 1 --note from hive desk --block a-dep
+request=hive-req-1
+status=replay
+owner=alpha
+at=1790991277
+detail=already applied: 4 edit(s) applied
+(exit 0)
+note count in owner backlog: 1
+$ [FM_HOME=main] /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M3ZJBRF7N4Z5P53Z8YC5ZPYC/bin/fm-ticket.sh edit a-one --request-id hive-req-1 --title conflicting content
+fm-ticket: request id hive-req-1 was already used with different content
+(exit 2)
+$ [FM_HOME=main] /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M3ZJBRF7N4Z5P53Z8YC5ZPYC/bin/fm-ticket.sh status hive-req-1
+request=hive-req-1
+status=replay
+owner=alpha
+at=1790991277
+detail=already applied: 4 edit(s) applied
+(exit 0)
+/tmp/fm-lab.HAeuSG/alpha/state/ticket-receipts:
+hive-req-1.receipt
+
+/tmp/fm-lab.HAeuSG/main/state/ticket-requests:
+hive-req-1.req
+hive-req-1.result
+task:
+  id: a-one
+  title: Alpha ticket v2
+  state: queued
+  blocked: yes
+  blocked_by: a-dep
+  held: no
+  hold_reason: "-"
+  hold_kind: "-"
+  hold_until: "-"
+  kind: task
+  repo: alpha
+  priority: 1
+  created: 2026-10-03
+  closed: "-"
+  deps: "blocked-by:a-dep"
+  links: none
+  body: "original body\nNote (main, 2026-10-03, request hive-req-1): from hive desk\nTicket request hive-req-1 applied (093ea7abda4571ec)."
+help[2]:
+  - Run `tasks-axi unblock a-one --by <other>` to clear a blocker
+  - Run `tasks-axi start a-one` to move it to in flight
+main backlog carries a-one? 0
+
+### S3 mate edits a primary-owned ticket and a sibling-mate-owned ticket (both directions)
+$ [FM_HOME=alpha] /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M3ZJBRF7N4Z5P53Z8YC5ZPYC/bin/fm-ticket.sh edit m-one --request-id alpha-req-1 --note alpha says hi
+request=alpha-req-1
+status=applied
+owner=main
+at=1790991277
+detail=1 edit(s) applied
+(exit 0)
+$ [FM_HOME=alpha] /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M3ZJBRF7N4Z5P53Z8YC5ZPYC/bin/fm-ticket.sh edit b-one --request-id alpha-req-2 --priority 0
+request=alpha-req-2
+status=applied
+owner=beta
+at=1790991278
+detail=1 edit(s) applied
+(exit 0)
+  title: Main ticket
+  body: "Note (alpha, 2026-10-03, request alpha-req-1): alpha says hi\nTicket request alpha-req-1 applied (23e30c7e2d89fa21)."
+  priority: 0
+
+### S4 adversarial: invalid edit, closed ticket, absent ticket, unhold of a captain hold
+$ [FM_HOME=main] /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M3ZJBRF7N4Z5P53Z8YC5ZPYC/bin/fm-ticket.sh edit a-one --priority 9
+request=r-fc1da999cd386a9e
+status=rejected
+owner=alpha
+at=1790991279
+detail=priority must be an integer 0-4
+(exit 2)
+$ [FM_HOME=main] /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M3ZJBRF7N4Z5P53Z8YC5ZPYC/bin/fm-ticket.sh edit a-done --note late
+request=r-655762138cfef50e
+status=rejected
+owner=alpha
+at=1790991279
+detail=ticket a-done is closed
+(exit 2)
+$ [FM_HOME=main] /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M3ZJBRF7N4Z5P53Z8YC5ZPYC/bin/fm-ticket.sh edit ghost-key --note x
+request=r-aaabcbe9d52a93b6
+status=absent
+owner=none
+at=1790991279
+detail=no home carries ticket ghost-key
+(exit 3)
+$ [FM_HOME=main] /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M3ZJBRF7N4Z5P53Z8YC5ZPYC/bin/fm-ticket.sh edit a-cap --unhold
+request=r-2e19f6fbe727c3f1
+status=rejected
+owner=alpha
+at=1790991280
+detail=a captain hold is released only by its keyed answer
+(exit 2)
+
+### S5 adversarial: owner unreachable -> pending, then resume-pending delivers once
+$ [FM_HOME=main] /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M3ZJBRF7N4Z5P53Z8YC5ZPYC/bin/fm-ticket.sh edit a-one --request-id hive-req-2 --note queued while unreadable
+request=hive-req-2
+status=pending
+owner=unknown
+at=1790991280
+detail=ticket a-one was not found and these homes could not be read: alpha
+(exit 4)
+$ [FM_HOME=main] /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M3ZJBRF7N4Z5P53Z8YC5ZPYC/bin/fm-ticket.sh resume-pending
+(exit 0)
+$ [FM_HOME=main] /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M3ZJBRF7N4Z5P53Z8YC5ZPYC/bin/fm-ticket.sh status hive-req-2
+request=hive-req-2
+status=applied
+owner=alpha
+at=1790991281
+detail=1 edit(s) applied
+(exit 0)
+note count: 1
+
+### S6 reverse and lateral handoff (queued only)
+$ [FM_HOME=main] /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M3ZJBRF7N4Z5P53Z8YC5ZPYC/bin/fm-backlog-handoff.sh --from alpha main a-move
+handed off 1 item(s) to main: a-move
+  from secondmate alpha
+  into /tmp/fm-lab.HAeuSG/main/data/backlog.md
+(exit 0)
+$ [FM_HOME=main] /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M3ZJBRF7N4Z5P53Z8YC5ZPYC/bin/fm-backlog-handoff.sh --from alpha beta a-lat
+handed off 1 item(s) to beta: a-lat
+  from secondmate alpha
+  into /tmp/fm-lab.HAeuSG/beta/data/backlog.md
+error: refusing fleet lifecycle from inside a no-mistakes gate worktree (/home/hezki/.no-mistakes/repos/e677c3fe7f2c.git)
+error: backlog delivery to secondmate beta succeeded, but its receiver wake failed; retry a tracked remote wake with --resume-pending or a later new handoff, and retry a local wake by rerunning its handoff
+(exit 1)
+$ [FM_HOME=main] /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M3ZJBRF7N4Z5P53Z8YC5ZPYC/bin/fm-ticket.sh owner a-move
+key=a-move
+owner=main
+section=Queued
+remote=0
+home=
+candidates=main
+unreadable=
+(exit 0)
+$ [FM_HOME=main] /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M3ZJBRF7N4Z5P53Z8YC5ZPYC/bin/fm-ticket.sh owner a-lat
+key=a-lat
+owner=beta
+section=Queued
+remote=0
+home=/tmp/fm-lab.HAeuSG/beta
+candidates=beta
+unreadable=
+(exit 0)
+2:- [ ] a-fly - In flight item (repo: alpha) (since 2026-10-03)
+$ [FM_HOME=main] /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M3ZJBRF7N4Z5P53Z8YC5ZPYC/bin/fm-backlog-handoff.sh --from alpha main a-fly
+error: refusing to hand off in-flight backlog items: a-fly
+       nothing was moved.
+(exit 1)
+
+### S7 one-step new ticket in project X lands in owning home; rerun converges
+$ [FM_HOME=main] /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M3ZJBRF7N4Z5P53Z8YC5ZPYC/bin/fm-ticket.sh new beta Hive: add the thing --key hive-new-1 --body made from hive
+error: refusing fleet lifecycle from inside a no-mistakes gate worktree (/home/hezki/.no-mistakes/repos/e677c3fe7f2c.git)
+error: backlog delivery to secondmate beta succeeded, but its receiver wake failed; retry a tracked remote wake with --resume-pending or a later new handoff, and retry a local wake by rerunning its handoff
+error: previous receiver wake for secondmate beta is unresolved; nothing new was moved
+key=hive-new-1
+owner=main
+status=pending-handoff
+detail=filed Queued in this home; rerun the same command to retry the handoff to beta
+(exit 4)
+$ [FM_HOME=main] /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M3ZJBRF7N4Z5P53Z8YC5ZPYC/bin/fm-ticket.sh new beta Hive: add the thing --key hive-new-1 --body made from hive
+error: refusing fleet lifecycle from inside a no-mistakes gate worktree (/home/hezki/.no-mistakes/repos/e677c3fe7f2c.git)
+error: backlog delivery to secondmate beta succeeded, but its receiver wake failed; retry a tracked remote wake with --resume-pending or a later new handoff, and retry a local wake by rerunning its handoff
+error: previous receiver wake for secondmate beta is unresolved; nothing new was moved
+key=hive-new-1
+owner=main
+status=pending-handoff
+detail=filed Queued in this home; rerun the same command to retry the handoff to beta
+(exit 4)
+$ [FM_HOME=main] /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M3ZJBRF7N4Z5P53Z8YC5ZPYC/bin/fm-ticket.sh owner hive-new-1
+key=hive-new-1
+owner=main
+section=Queued
+remote=0
+home=
+candidates=main
+unreadable=
+(exit 0)
+$ [FM_HOME=main] /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M3ZJBRF7N4Z5P53Z8YC5ZPYC/bin/fm-ticket.sh new gamma Local project ticket --key main-new-1
+key=main-new-1
+owner=main
+status=filed
+(exit 0)
+$ [FM_HOME=main] /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M3ZJBRF7N4Z5P53Z8YC5ZPYC/bin/fm-ticket.sh owner main-new-1
+key=main-new-1
+owner=main
+section=Queued
+remote=0
+home=
+candidates=main
+unreadable=
+(exit 0)
+
+### S8 owner-aware keyed answer + reconcile for a call held in a secondmate
+$ [FM_HOME=main] /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M3ZJBRF7N4Z5P53Z8YC5ZPYC/bin/fm-captain-hold.sh answers --any-origin --source hive live
+closed: a-cap
+answers: closed=1 skipped=0
+(exit 0)
+  state: done
+$ [FM_HOME=main] /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M3ZJBRF7N4Z5P53Z8YC5ZPYC/bin/fm-captain-hold.sh bind hive-src
+bound: hive-src -> (any)
+(exit 0)
+$ [FM_HOME=main] /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M3ZJBRF7N4Z5P53Z8YC5ZPYC/bin/fm-captain-hold.sh reconcile-requests --source-id hive-src --source hive live
+reconcile: a-cap2
+reconcile-requests: created=1 skipped=0
+(exit 0)
+a-cap2.request
+ls: cannot access '/tmp/fm-lab.HAeuSG/main/state/reconcile-requests/': No such file or directory
+$ [FM_HOME=main] /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M3ZJBRF7N4Z5P53Z8YC5ZPYC/bin/fm-captain-hold.sh reconcile-requests --source-id hive-src --source hive live
+refused: ghost-call (absent)
+reconcile-requests: created=0 skipped=1
+(exit 1)
+
+### S9 rollup names owner per ticket and pages past secondmate bounds
+(snapshot exit 0)
+{
+  "main_backlog": [
+    {
+      "id": "m-one",
+      "owner": "main"
+    },
+    {
+      "id": "a-move",
+      "owner": "main"
+    },
+    {
+      "id": "hive-new-1",
+      "owner": "main"
+    },
+    {
+      "id": "main-new-1",
+      "owner": "main"
+    }
+  ],
+  "mates": [
+    {
+      "id": "alpha",
+      "owner": null,
+      "counts": {
+        "active_children": 0,
+        "decisions_open": 0,
+        "holds": 0,
+        "queued": 0,
+        "landed": 0,
+        "endpoints": 0
+      },
+      "queued": [],
+      "omitted": []
+    },
+    {
+      "id": "beta",
+      "owner": null,
+      "counts": {
+        "active_children": 0,
+        "decisions_open": 0,
+        "holds": 0,
+        "queued": 0,
+        "landed": 0,
+        "endpoints": 0
+      },
+      "queued": [],
+      "omitted": []
+    }
+  ]
+}
+$ [FM_HOME=main] /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M3ZJBRF7N4Z5P53Z8YC5ZPYC/bin/fm-fleet-snapshot.sh --secondmate-page beta --surface queued --offset 0 --limit 10
+{"schema":"fm-secondmate-page.v1","id":"beta","surface":"queued","offset":0,"limit":10,"total":6,"rows":[{"id":"b-one","title":"Beta ticket","blocked_by":null,"blocked_by_ids":[],"unresolved_blocker_ids":[],"blocked_reason":null,"hold_reason":null,"hold_kind":null,"hold_until":null,"hold_bucket":null,"hold_age_days":0,"captain_actionable":false,"repo":"beta","kind":null,"since":"2026-10-03","owner":"beta"},{"id":"a-lat","title":"Lateral","blocked_by":null,"blocked_by_ids":[],"unresolved_blocker_ids":[],"blocked_reason":null,"hold_reason":null,"hold_kind":null,"hold_until":null,"hold_bucket":null,"hold_age_days":0,"captain_actionable":false,"repo":"alpha","kind":null,"since":"2026-10-03","owner":"beta"},{"id":"b-q1","title":"Beta queued 1","blocked_by":null,"blocked_by_ids":[],"unresolved_blocker_ids":[],"blocked_reason":null,"hold_reason":null,"hold_kind":null,"hold_until":null,"hold_bucket":null,"hold_age_days":0,"captain_actionable":false,"repo":"beta","kind":null,"since":"2026-10-03","owner":"beta"},{"id":"b-q2","title":"Beta queued 2","blocked_by":null,"blocked_by_ids":[],"unresolved_blocker_ids":[],"blocked_reason":null,"hold_reason":null,"hold_kind":null,"hold_until":null,"hold_bucket":null,"hold_age_days":0,"captain_actionable":false,"repo":"beta","kind":null,"since":"2026-10-03","owner":"beta"},{"id":"b-q3","title":"Beta queued 3","blocked_by":null,"blocked_by_ids":[],"unresolved_blocker_ids":[],"blocked_reason":null,"hold_reason":null,"hold_kind":null,"hold_until":null,"hold_bucket":null,"hold_age_days":0,"captain_actionable":false,"repo":"beta","kind":null,"since":"2026-10-03","owner":"beta"},{"id":"b-q4","title":"Beta queued 4","blocked_by":null,"blocked_by_ids":[],"unresolved_blocker_ids":[],"blocked_reason":null,"hold_reason":null,"hold_kind":null,"hold_until":null,"hold_bucket":null,"hold_age_days":0,"captain_actionable":false,"repo":"beta","kind":null,"since":"2026-10-03","owner":"beta"}]}
+(exit 0)
+### S7b rerun convergence: hive-new-1 occurrences in main backlog: 1; in beta: 0
+### S9b refresh secondmate ledgers then snapshot with FM_SNAPSHOT_SECONDMATE_QUEUED=2
+(refresh alpha exit 0)
+(refresh beta exit 0)
+(snapshot exit 0)
+{"main_backlog":[{"id":"m-one","owner":"main"},{"id":"a-move","owner":"main"},{"id":"hive-new-1","owner":"main"},{"id":"main-new-1","owner":"main"}],"mates":[{"id":"alpha","owner":"alpha","queued_count":3,"queued":[{"id":"a-one","owner":"alpha"},{"id":"a-dep","owner":"alpha"}],"omitted":[{"surface":"queued","count":1}]},{"id":"beta","owner":"beta","queued_count":6,"queued":[{"id":"b-one","owner":"beta"},{"id":"a-lat","owner":"beta"}],"omitted":[{"surface":"queued","count":4}]}]}
+### S9c page past the bound
+{"total":6,"rows":[{"id":"b-q1","owner":"beta"},{"id":"b-q2","owner":"beta"},{"id":"b-q3","owner":"beta"},{"id":"b-q4","owner":"beta"}]}

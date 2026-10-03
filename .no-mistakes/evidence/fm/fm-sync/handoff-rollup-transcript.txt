@@ -1,0 +1,74 @@
+### S6 lateral handoff alpha->beta of queued b-task, and reverse alpha->main
+
+$ [main] bin/fm-backlog-handoff.sh --from alpha beta b-task
+handed off 1 item(s) to beta: b-task
+  from secondmate alpha
+  into /tmp/fm-lab.2KtcnZ/beta/data/backlog.md
+error: refusing fleet lifecycle from inside a no-mistakes gate worktree (/home/hezki/.no-mistakes/repos/e677c3fe7f2c.git)
+error: backlog delivery to secondmate beta succeeded, but its receiver wake failed; retry a tracked remote wake with --resume-pending or a later new handoff, and retry a local wake by rerunning its handoff
+[exit 1]
+
+$ [main] bin/fm-backlog-handoff.sh --from alpha beta b-task
+nothing to move: b-task already present in /tmp/fm-lab.2KtcnZ/beta/data/backlog.md
+error: refusing fleet lifecycle from inside a no-mistakes gate worktree (/home/hezki/.no-mistakes/repos/e677c3fe7f2c.git)
+error: backlog delivery to secondmate beta succeeded, but its receiver wake failed; retry a tracked remote wake with --resume-pending or a later new handoff, and retry a local wake by rerunning its handoff
+[exit 1]
+
+$ [main] bin/fm-backlog-handoff.sh --from alpha main a-login
+handed off 1 item(s) to main: a-login
+  from secondmate alpha
+  into /tmp/fm-lab.2KtcnZ/main/data/backlog.md
+[exit 0]
+--- owners after moves
+
+$ [main] bin/fm-ticket.sh owner b-task
+key=b-task
+owner=beta
+section=Queued
+remote=0
+home=/tmp/fm-lab.2KtcnZ/beta
+candidates=beta
+unreadable=
+[exit 0]
+
+$ [main] bin/fm-ticket.sh owner a-login
+key=a-login
+owner=main
+section=Queued
+remote=0
+home=
+candidates=main
+unreadable=
+[exit 0]
+### S6b adversarial: in-flight item refused, unknown source refused
+2:- [ ] b-live - in flight (repo: beta) (since 2026-10-03)
+
+$ [main] bin/fm-backlog-handoff.sh --from beta main b-live
+error: refusing to hand off in-flight backlog items: b-live
+       nothing was moved.
+[exit 1]
+
+$ [main] bin/fm-backlog-handoff.sh --from ghost main b-task
+error: secondmate ghost has no home in /tmp/fm-lab.2KtcnZ/main/data/secondmates.md
+[exit 1]
+### S7 replay after handoff (cross-owner idempotency): replay req-main-to-alpha now that a-login is in main
+
+$ [main] bin/fm-ticket.sh retry req-main-to-alpha
+request=req-main-to-alpha
+status=replay
+owner=main
+at=1790989839
+detail=already applied: recorded on ticket a-login
+[exit 0]
+note occurrences in main backlog: 1
+### S8 rollup with explicit owners and bounds
+[{"id":"a-login","owner":"main"},{"id":"m-work","owner":"main"}]
+
+$ [main] bin/fm-fleet-snapshot.sh --secondmate-page beta --surface queued --offset 2 --limit 3
+fm-fleet-snapshot: the home summary of beta is not valid
+[exit 1]
+[]
+
+$ [main] bin/fm-fleet-snapshot.sh --secondmate-page ghost
+fm-fleet-snapshot: ghost is not a registered secondmate
+[exit 1]

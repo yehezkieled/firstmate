@@ -1,0 +1,149 @@
+== fm-ticket
+ok - owner lookup reports main, a mate, absent, parent fallback and ambiguity
+fm-ticket: request id req-1 was already used with different content
+ok - a routed edit lands in the owning mate, is acknowledged, and replays idempotently
+ok - invalid, cross-home-dependency and closed-ticket edits are rejected untouched
+ok - an edit follows a moved ticket and the former owner refuses to write
+ok - a mate edits primary-owned and sibling-owned tickets through its parent
+ok - an unreadable owner leaves a journaled pending request that retry delivers
+ok - an unreadable local mate backlog leaves a pending edit that resume-pending delivers
+ok - a mate with no local parent route keeps the edit pending and resume-pending delivers it; a remote parent route is unsupported
+ok - the applied request id travels in the ticket, so a replay after a handoff is not applied twice
+handed off 1 item(s) to alpha: alpha-fix-the-flaky-thing
+  into /tmp/fm-ticket.r00GDV/new-a/data/backlog.md
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  2 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the requested message WILL still be sent.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+handed off 1 item(s) to alpha: alpha-fix-alpha-login
+  into /tmp/fm-ticket.r00GDV/new-a/data/backlog.md
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+handed off 1 item(s) to alpha: shared-shared-thing
+  into /tmp/fm-ticket.r00GDV/new-a/data/backlog.md
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+fm-ticket: project beta is listed by several secondmates (beta beta2); pick one with --owner
+ok - new files a ticket in the owning home, converges on rerun, and refuses ambiguous owners
+ALL TESTS PASSED
+rc=0
+== fm-backlog-handoff
+ok - a routed handoff wakes once and a successful rerun stays idempotent
+ok - a failed receiver wake is loud and retries from an already-present handoff
+ok - a failed advisory doorbell leaves the inbox delivery successful and idempotent
+ok - concurrent reconciliation treats enqueue as delivery despite a failed advisory ring
+tests/fm-backlog-handoff.test.sh: line 263: 754362 Killed                     FM_REAL_TASKS_AXI="$real_tasks" PATH="$fakebin:$PATH" FM_HOME="$home" "$ROOT/bin/fm-backlog-handoff.sh" design crash-item > "$TMP_ROOT/move-crash.out" 2>&1
+ok - a post-move crash preserves wake intent for an idempotent retry
+tests/fm-backlog-handoff.test.sh: line 339: 755588 Killed                     FM_REAL_TASKS_AXI="$real_tasks" PATH="$fakebin:$PATH" FM_HOME="$home" "$ROOT/bin/fm-backlog-handoff.sh" design pre-move-crash > "$TMP_ROOT/pre-move-crash.out" 2>&1
+ok - a pre-move crash wakes only after retry makes the item durable
+tests/fm-backlog-handoff.test.sh: line 414: 756950 Killed                     PATH="$fakebin:$PATH" FM_REAL_RM="$real_rm" FM_CONFIRM_CRASH_ONCE="$TMP_ROOT/confirm-crash.once" FM_CONFIRM_WAKE_MARKER="$home/state/.backlog-handoff-design.wake-pending" FM_HOME="$home" "$ROOT/bin/fm-backlog-handoff.sh" design confirm-crash > "$TMP_ROOT/confirm-crash.out" 2>&1
+ok - a post-confirmation crash reconciles once without suppressing a later handoff wake
+ok - an unresolved delivery attempt refuses an immediate duplicate wake
+ok - concurrent local handoffs serialize each durable move with its wake
+ok - local teardown waits for the routed move and receiver wake
+ok - failed local home removal preserves its wake and a retry retires both
+ok - body followed by another item moves intact with no source orphans
+ok - body followed by section heading moves intact; section stays
+ok - multi-paragraph body with internal blank lines moves whole and is idempotent
+ok - body as last lines of the file moves intact
+ok - EOF body before a seeded destination section keeps its boundary
+ok - untouched EOF line preserves its original terminator
+ok - body-carrying handoff is idempotent: re-run changes nothing
+ok - noncanonical one-space and tab continuations refuse without changes
+ok - indented ## Intent / ## Acceptance are body, not section boundaries
+ok - registry home parses when summary has parentheses before (home: ...)
+ok - registry entry without (home: ...) fails cleanly with has no home
+ok - handoff reports a moved item whose public commitment still binds this home
+ok - handoff says nothing about public commitments in a relay-free home
+ok - reverse handoff moves queued work to main, never wakes the source, and refuses in-flight work
+ok - a reverse handoff rerun converges when the item already reached main
+ok - lateral handoff moves a queued item between mates and wakes only the receiver
+ok - same-home, unknown-source and remote reverse or lateral handoffs are refused untouched
+ok - opposite-direction lateral handoffs both complete without deadlocking
+ALL TESTS PASSED
+rc=0
+== fm-captain-hold-lifecycle
+ok - a bound channel's captured answers close their captain-held tasks at answer time
+ok - only a bound captured source creates reconcile requests
+ok - normal answers and their replays retire reconcile requests
+ok - reconcile closes a moot call with evidence and keeps an active one open with a note
+ok - reconcile outcomes apply durable mutations once across partial failures
+ok - a channel source with no decision binding closes nothing
+ok - legacy identities, metadata, bindings, and the shim keep working
+ok - a board answer reaches the keyed-answer intake and wakes firstmate
+ok - the chat channel feeds the same keyed-answer intake a captured review does
+ok - completion and verification validate origins before constructing paths
+ok - a status resolution over a still-open captain-held task is signalled, not closed
+ok - a captain call with no routed work, a verified transfer, an open decision, and an answered call all stay silent
+ok - cleanup leaves a captain-held work item open with its deliverable, and only an answer closes it
+ok - release and scout report retention distinguish deliveries from rejected merge answers
+ok - an interrupted cleanup keeps the captain call recoverable and session start retains it
+ok - an answer before cleanup replay preserves the retained report
+ok - an answer before cleanup replay notes the retained Gerrit change
+ok - an unusable pending-close record names its reason instead of a bare refusal
+ok - an unsupported relocated report does not wedge the captain's answer
+ok - cleanup retains captain calls in the configured backlog
+ok - cleanup keeps a captain-held Gerrit task open and records its change URL
+ok - merge approval releases before zero-retention cleanup records completion
+ok - the PR merge entrypoint refuses a captain-held task before merging
+ok - the local merge entrypoint refuses a captain-held task before merging
+ok - the PR merge entrypoint separates an unreadable authority record from an absent one
+ok - the local merge entrypoint separates an unreadable authority record from an absent one
+ok - merge entrypoints reject unsafe identities and absent state before locking
+ok - merge entrypoints refuse a replacement incarnation after waiting for cleanup
+ok - merge entrypoints own task state before forced cleanup can retire it
+ok - a released merge passes the guarded entrypoint and remains recently landed
+ok - cleanup refuses a ship row when its captain hold cannot be read
+ok - skipped on markdown-only tasks-axi: verify against a beads-migrated hold
+ok - skipped on markdown-only tasks-axi: verify against a prefix-migrated hold
+ok - skipped on markdown-only tasks-axi: prefer a marker-noted row over a prefix namesake
+ok - skipped on markdown-only tasks-axi: complete against a beads-migrated hold
+ok - skipped on markdown-only tasks-axi: verify an unresolvable beads legacy id
+ok - skipped on markdown-only tasks-axi: verify a derived pre-collapse key
+ok - captain-hold mutations address the beads backend without a markdown override
+ok - skipped on markdown-only tasks-axi: captain-hold create under due.required without types.custom
+ok - keyed answers and reconcile requests for a call a mate owns are applied in the owner's home
+rc=0
+== fm-bearings-snapshot
+ok - landed includes secondmate-managed merges alongside main-home merges
+ok - landed accepts only kind-owned delivery artifacts while answered questions stay out
+ok - kind fallback matches tasks-axi word boundaries and preserves scout deliveries
+ok - kindless v1 summaries retain report artifacts from fresh and cached ledgers
+ok - default landed selection balances one dominant home with sparse homes
+ok - landed selection refills capacity after sparse homes exhaust
+ok - landed selection uses deterministic home order when homes exceed the cap
+ok - landed selection preserves deterministic home and internal tie ordering
+ok - landed selection handles no landed items
+ok - --all-landed keeps the complete global landed output
+ok - landed stays bounded with per-home + overall caps and omitted[] disclosure
+ok - Bearings keeps a live blocker in structured live state and never converts it to Charted Next queue work
+ok - action-free items (working/done/queued/landed) do not leak into Captain's Call
+ok - main orphan in-flight stays out of Underway and is disclosed in omitted/gates
+ok - main unstructured current is disclosed while structured siblings still project
+ok - counterfactual meta clears main inventory warning and projects the live task
+ok - working captain holds retain main and secondmate bucket surfaces
+ok - active children reach Underway independently of a home captain hold
+ok - blank legacy summary names use their durable identifier
+ok - newest filed gates are selected before snapshot bounds
+ok - the rollup names row owners and a secondmate's omitted rows stay reachable by page
+ok - Underway rows carry the durable task name and gates carry their filed date
+ok - mixed secondmate roles, partial state, and captain readiness project independently
+ok - main and secondmate captain actionability use the same blocker readiness
+ok - a completed scout with decision-like report prose is a pointer, not pending
+ok - an authoritative captain hold surfaces end-to-end
+ok - current report pointers surface
+ok - queued body prose never hides an item from the board
+ok - --include-prs is the only path that fetches, and it enriches correctly
+ok - --include-prs maps a custom branch-prefix PR back to its recorded task
+ok - a partial GitHub failure degrades gracefully
+ok - Perl fallback bounds stalled GitHub calls without coreutils timeout
+ok - all fleet-sized sections are capped with counted opt-in expansion
+ok - captain-held tasks of any kind reach Captain's Call, deferral is honored, and landed excludes answered calls
+ok - structured hold buckets decide Captain's Call, Charted Next, and the reveal
+ok - a blocked deferred hold stays gated when its date arrives and is revealed by --all-decisions
+ok - revealed deferred holds display their deferral reason while live calls stay unannotated
+ok - live PR enrichment caps repositories with counted expansion
+ok - per-repository open-PR caps are disclosed with an expansion knob
+ok - projection and TOON rendering failures exit nonzero with diagnostics
+rc=0
