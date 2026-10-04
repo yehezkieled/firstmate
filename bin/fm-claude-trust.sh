@@ -52,9 +52,10 @@
 # (`es`/`F1e`) has no such fallback: it reads ONLY the canonical project-root
 # entry, and that root is never the worktree - Claude Code's own git-root
 # canonicalization (`Fr`/`Se`) walks a linked worktree's `.git` file through
-# its `commondir` pointer back to the PRIMARY CHECKOUT, exactly the <project>
-# argument this script already receives for the worktree-mode scope test
-# below. So the trust flag is registered on BOTH the worktree entry (for
+# its `commondir` pointer back to the worktree's PRIMARY CHECKOUT, which may
+# belong to another clone for a shared Treehouse pool slot. The scope test
+# below resolves and verifies that checkout. So the trust flag is registered
+# on BOTH the worktree entry (for
 # trust's ancestor-walk fallback and defense in depth) and the project entry
 # (the trust check's first, canonical-shaped, look); the two external-imports
 # flags land on those same two entries only when the project entry already
@@ -327,12 +328,12 @@ if [ "$MODE" = worktree ]; then
   # own git-root canonicalization collapses every linked worktree to. When
   # <project> is itself a linked worktree (a secondmate home spawned from,
   # rather than as, the primary checkout), refusing outright would wedge a
-  # relaunch that is otherwise perfectly valid: PROJ_COMMON already IS that
-  # primary checkout's own git dir (git's git-common-dir answer never changes
-  # by which worktree asks), so the checkout is derived structurally from it -
+  # relaunch that is otherwise perfectly valid: the selected CANON_BASE already
+  # IS that primary checkout's own git dir (WT_COMMON for a cross-clone slot,
+  # PROJ_COMMON otherwise), so the checkout is derived structurally from it -
   # its parent directory in the standard non-bare, non-GIT_DIR-overridden
   # layout this script already requires elsewhere - and verified, never
-  # assumed: the candidate's own resolved git dir must equal PROJ_COMMON, the
+  # assumed: the candidate's own resolved git dir must equal CANON_BASE, the
   # same primary-checkout definition used above, or this refuses rather than
   # guess.
   if [ "$CROSS_CLONE" = 1 ]; then
