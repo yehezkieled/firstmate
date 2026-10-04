@@ -1,0 +1,47 @@
+same-origin-pool
+$ bash bin/fm-claude-trust.sh .trust-live-drivrl35/pool/1/project .trust-live-drivrl35/second
+trusted: /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M44FNJB4995EJG555EPD89QP/.trust-live-drivrl35/pool/1/project
+trusted (project root): /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M44FNJB4995EJG555EPD89QP/.trust-live-drivrl35/main
+exit=0
+{"projects": {"/home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M44FNJB4995EJG555EPD89QP/.trust-live-drivrl35/main": {"hasTrustDialogAccepted": true}, "/home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M44FNJB4995EJG555EPD89QP/.trust-live-drivrl35/pool/1/project": {"hasTrustDialogAccepted": true}}}
+same-clone-existing
+$ bash bin/fm-claude-trust.sh .trust-live-drivrl35/plain .trust-live-drivrl35/main
+trusted: /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M44FNJB4995EJG555EPD89QP/.trust-live-drivrl35/plain
+trusted (project root): /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M44FNJB4995EJG555EPD89QP/.trust-live-drivrl35/main
+exit=0
+{"projects": {"/home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M44FNJB4995EJG555EPD89QP/.trust-live-drivrl35/main": {"hasTrustDialogAccepted": true}, "/home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M44FNJB4995EJG555EPD89QP/.trust-live-drivrl35/plain": {"hasTrustDialogAccepted": true}}}
+no-pool
+$ bash bin/fm-claude-trust.sh .trust-live-drivrl35/plain .trust-live-drivrl35/second
+error: refusing to pre-register Claude trust: '/home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M44FNJB4995EJG555EPD89QP/.trust-live-drivrl35/plain' is not a worktree of project '/home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M44FNJB4995EJG555EPD89QP/.trust-live-drivrl35/second'
+exit=1
+Claude store unchanged after refusal
+unrelated-origin
+$ bash bin/fm-claude-trust.sh .trust-live-drivrl35/pool/1/project .trust-live-drivrl35/other
+error: refusing to pre-register Claude trust: '/home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M44FNJB4995EJG555EPD89QP/.trust-live-drivrl35/pool/1/project' is not a worktree of project '/home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M44FNJB4995EJG555EPD89QP/.trust-live-drivrl35/other'
+exit=1
+Claude store unchanged after refusal
+primary-checkout
+$ bash bin/fm-claude-trust.sh .trust-live-drivrl35/main .trust-live-drivrl35/second
+error: refusing to pre-register Claude trust: '/home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M44FNJB4995EJG555EPD89QP/.trust-live-drivrl35/main' is a primary checkout, not an isolated worktree
+exit=1
+Claude store unchanged after refusal
+missing-origin
+$ bash bin/fm-claude-trust.sh .trust-live-drivrl35/pool/1/project .trust-live-drivrl35/second
+error: refusing to pre-register Claude trust: '/home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M44FNJB4995EJG555EPD89QP/.trust-live-drivrl35/pool/1/project' is not a worktree of project '/home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M44FNJB4995EJG555EPD89QP/.trust-live-drivrl35/second'
+exit=1
+Claude store unchanged after refusal
+canonical-consent
+$ bash bin/fm-claude-trust.sh .trust-live-drivrl35/pool/1/project .trust-live-drivrl35/second
+trusted: /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M44FNJB4995EJG555EPD89QP/.trust-live-drivrl35/pool/1/project
+trusted (project root): /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M44FNJB4995EJG555EPD89QP/.trust-live-drivrl35/main
+exit=0
+{"projects": {"/home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M44FNJB4995EJG555EPD89QP/.trust-live-drivrl35/main": {"hasClaudeMdExternalIncludesApproved": true, "hasClaudeMdExternalIncludesWarningShown": true, "hasTrustDialogAccepted": true}, "/home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M44FNJB4995EJG555EPD89QP/.trust-live-drivrl35/pool/1/project": {"hasClaudeMdExternalIncludesApproved": true, "hasClaudeMdExternalIncludesWarningShown": true, "hasTrustDialogAccepted": true}}, "unrelated": "preserve"}
+canonical-decline
+$ bash bin/fm-claude-trust.sh .trust-live-drivrl35/pool/1/project .trust-live-drivrl35/second
+error: project entry for /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M44FNJB4995EJG555EPD89QP/.trust-live-drivrl35/main in /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M44FNJB4995EJG555EPD89QP/.trust-live-drivrl35/canonical-decline/.claude.json already declined external CLAUDE.md imports; refusing to override that consent. To recover, remove hasClaudeMdExternalIncludesApproved and hasClaudeMdExternalIncludesWarningShown from that project entry and approve the imports dialog interactively once
+error: refusing to pre-register Claude trust: could not record trust for '/home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M44FNJB4995EJG555EPD89QP/.trust-live-drivrl35/pool/1/project' and project '/home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M44FNJB4995EJG555EPD89QP/.trust-live-drivrl35/main' in '/home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M44FNJB4995EJG555EPD89QP/.trust-live-drivrl35/canonical-decline/.claude.json'
+exit=1
+Claude store unchanged after refusal
+Pool-slot executable recognition: same-origin cross-clone exit=0
+Pool-slot executable recognition: unrelated origin exit=1
+All behavioral assertions passed; disposable fixtures removed.
