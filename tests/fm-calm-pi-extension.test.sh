@@ -1663,7 +1663,8 @@ async function assertStockHtmlRendering(command, submitData) {
   editorText = command;
   terminalInputHandler(submitData);
   const htmlRenderer = createToolHtmlRenderer({
-    getToolDefinition: (name) => tools.find((tool) => tool.name === name),
+    getToolDefinition: (name) => tools.find((tool) => tool.name === name), // Pi < 1.0.2
+    getToolRenderers: (name) => tools.find((tool) => tool.name === name), // Pi >= 1.0.2
     theme,
     cwd: process.cwd(),
   });
@@ -1694,7 +1695,8 @@ getKeybindings().setUserBindings({ "tui.input.submit": "alt+s" });
 editorText = "/export remapped.html";
 terminalInputHandler("\r");
 const unmatchedRenderer = createToolHtmlRenderer({
-  getToolDefinition: (name) => tools.find((tool) => tool.name === name),
+  getToolDefinition: (name) => tools.find((tool) => tool.name === name), // Pi < 1.0.2
+    getToolRenderers: (name) => tools.find((tool) => tool.name === name), // Pi >= 1.0.2
   theme,
   cwd: process.cwd(),
 });
