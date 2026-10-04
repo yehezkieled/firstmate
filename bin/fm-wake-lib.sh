@@ -12,6 +12,8 @@ FM_WAKE_QUEUE_LOCK="${FM_WAKE_QUEUE_LOCK:-$STATE/.wake-queue.lock}"
 FM_LOCK_STALE_AFTER="${FM_LOCK_STALE_AFTER:-2}"
 # shellcheck source=bin/fm-path-lib.sh
 . "$FM_WAKE_LIB_DIR/fm-path-lib.sh"
+# shellcheck source=bin/fm-git-origin-lib.sh
+. "$FM_WAKE_LIB_DIR/fm-git-origin-lib.sh"
 # Resolved once at source time: fm_pid_identity and fm_path_mtime run inside 0.2s
 # confirm and 0.5s attach polls, and forking uname per call is a measurable cost on
 # the platform (Git Bash/MSYS) that already pays the highest fork price.
@@ -1403,18 +1405,10 @@ fm_firstmate_root_home() {
 # separate clones of one origin share a single lock; an origin-less local-only
 # project falls back to its own worktree top instead of failing to resolve.
 fm_treehouse_project_lock_path() {  # <project-dir>
-  local project=$1 root origin identity hash top
+  local project=$1 root identity hash top
   [ -d "$project" ] || return 1
   root=$(fm_firstmate_root_home "$FM_HOME") || return 1
-  origin=$(git -C "$project" remote get-url origin 2>/dev/null || true)
-  if [ -n "$origin" ]; then
-    case "$origin" in
-      /*) [ ! -d "$origin" ] || origin=$(CDPATH='' cd -- "$origin" 2>/dev/null && pwd -P) || return 1 ;;
-      *://*|*:* ) ;;
-      *) [ ! -d "$project/$origin" ] || origin=$(CDPATH='' cd -- "$project/$origin" 2>/dev/null && pwd -P) || return 1 ;;
-    esac
-    identity=$origin
-  else
+  if ! identity=$(fm_git_origin_identity "$project"); then
     top=$(git -C "$project" rev-parse --show-toplevel 2>/dev/null) || return 1
     top=$(CDPATH='' cd -- "$top" 2>/dev/null && pwd -P) || return 1
     identity=$top
@@ -1426,7 +1420,8 @@ fm_treehouse_project_lock_path() {  # <project-dir>
 
 # A Treehouse slot has the managed pool's fixed <pool>/<slot>/<repo> layout.
 # Require both its pool state and the same Git common directory as the recorded
-# project; an ordinary linked worktree is not evidence that Treehouse owns it.
+# project, or a clone of the same origin because the pool is shared across homes;
+# an ordinary linked worktree is not evidence that Treehouse owns it.
 fm_treehouse_pool_slot() {  # <project-dir> <worktree>
   local project=$1 worktree=$2 slot pool state project_common slot_common
   [ -d "$project" ] && [ -d "$worktree" ] || return 1
@@ -1438,7 +1433,10 @@ fm_treehouse_pool_slot() {  # <project-dir> <worktree>
   slot_common=$(git -C "$slot" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
   project_common=$(CDPATH='' cd -- "$project_common" 2>/dev/null && pwd -P) || return 1
   slot_common=$(CDPATH='' cd -- "$slot_common" 2>/dev/null && pwd -P) || return 1
-  [ "$project_common" = "$slot_common" ]
+  [ "$project_common" = "$slot_common" ] && return 0
+  # The pool is shared by every clone of one origin, so a slot may be a
+  # worktree of another home's clone of this project.
+  fm_git_same_origin "$project" "$slot"
 }
 
 # Slot-owner claim: which task a Treehouse pool slot currently belongs to.

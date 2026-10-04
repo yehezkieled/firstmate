@@ -228,6 +228,8 @@ refuse() { echo "error: refusing to pre-register Claude trust: $1" >&2; exit 1; 
 
 # shellcheck source=bin/fm-gate-refuse-lib.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/fm-gate-refuse-lib.sh"
+# shellcheck source=bin/fm-git-origin-lib.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/fm-git-origin-lib.sh"
 
 real_dir() { (cd -P -- "$1" 2>/dev/null && pwd -P); }
 
@@ -298,7 +300,24 @@ if [ "$MODE" = worktree ]; then
 
   PROJ_COMMON=$(common_dir_of "$PROJ_REAL") || true
   [ -n "$PROJ_COMMON" ] || refuse "project '$PROJ_REAL' is not inside a git repository"
-  [ "$WT_COMMON" = "$PROJ_COMMON" ] || refuse "'$TARGET_REAL' is not a worktree of project '$PROJ_REAL'"
+  # Treehouse shares one pool among every clone of an origin, so a secondmate
+  # home's spawn can be handed a slot that is a worktree of another home's clone
+  # (the root home's, say). That slot is accepted only on positive evidence: it
+  # must sit in a Treehouse pool (the pool's own state file beside its slot
+  # directory) and its repository must share a non-empty origin with <project>.
+  # An unrelated repository, a pool-less linked worktree, and a primary
+  # checkout are still refused. The project entry written below is then the
+  # slot's own canonical checkout, because that is where Claude Code's git-root
+  # canonicalization sends the worktree and so where the imports check reads.
+  CROSS_CLONE=0
+  if [ "$WT_COMMON" != "$PROJ_COMMON" ]; then
+    WT_POOL_STATE="$(dirname -- "$(dirname -- "$TARGET_REAL")")/treehouse-state.json"
+    if [ -f "$WT_POOL_STATE" ] && [ ! -L "$WT_POOL_STATE" ] && fm_git_same_origin "$TARGET_REAL" "$PROJ_REAL"; then
+      CROSS_CLONE=1
+    else
+      refuse "'$TARGET_REAL' is not a worktree of project '$PROJ_REAL'"
+    fi
+  fi
 
   # The external-imports flags must land on the primary checkout - its own git
   # dir equals the common dir - because that is exactly the path Claude Code's
@@ -313,19 +332,25 @@ if [ "$MODE" = worktree ]; then
   # assumed: the candidate's own resolved git dir must equal PROJ_COMMON, the
   # same primary-checkout definition used above, or this refuses rather than
   # guess.
-  PROJ_GIT_DIR=$(git -C "$PROJ_REAL" rev-parse --absolute-git-dir 2>/dev/null) || true
-  [ -n "$PROJ_GIT_DIR" ] || refuse "project '$PROJ_REAL' has no resolvable git directory"
-  PROJ_GIT_DIR=$(real_dir "$PROJ_GIT_DIR") || true
-  [ -n "$PROJ_GIT_DIR" ] || refuse "project '$PROJ_REAL' has an unresolvable git directory"
-  if [ "$PROJ_GIT_DIR" = "$PROJ_COMMON" ]; then
+  if [ "$CROSS_CLONE" = 1 ]; then
+    CANON_BASE=$WT_COMMON
+    PROJ_GIT_DIR=
+  else
+    CANON_BASE=$PROJ_COMMON
+    PROJ_GIT_DIR=$(git -C "$PROJ_REAL" rev-parse --absolute-git-dir 2>/dev/null) || true
+    [ -n "$PROJ_GIT_DIR" ] || refuse "project '$PROJ_REAL' has no resolvable git directory"
+    PROJ_GIT_DIR=$(real_dir "$PROJ_GIT_DIR") || true
+    [ -n "$PROJ_GIT_DIR" ] || refuse "project '$PROJ_REAL' has an unresolvable git directory"
+  fi
+  if [ "$PROJ_GIT_DIR" = "$CANON_BASE" ]; then
     PROJ_CANON=$PROJ_REAL
   else
-    PROJ_CANON=$(real_dir "$(dirname -- "$PROJ_COMMON")") || true
+    PROJ_CANON=$(real_dir "$(dirname -- "$CANON_BASE")") || true
     [ -n "$PROJ_CANON" ] \
       || refuse "project '$PROJ_REAL' is a linked worktree whose primary checkout could not be resolved"
     CANON_GIT_DIR=$(git -C "$PROJ_CANON" rev-parse --absolute-git-dir 2>/dev/null) || true
     CANON_GIT_DIR=$(real_dir "${CANON_GIT_DIR:-}") || true
-    [ -n "$CANON_GIT_DIR" ] && [ "$CANON_GIT_DIR" = "$PROJ_COMMON" ] \
+    [ -n "$CANON_GIT_DIR" ] && [ "$CANON_GIT_DIR" = "$CANON_BASE" ] \
       || refuse "project '$PROJ_REAL' is a linked worktree whose primary checkout could not be resolved"
   fi
 elif [ "$MODE" = lab-home ]; then
