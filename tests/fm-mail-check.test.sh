@@ -63,6 +63,7 @@ enter_mailbox() {
   mkdir -p "$home/bin" "$FAKEBIN"
   [ -e "$home/bin/fm-wake-lib.sh" ] || ln -s "$ROOT/bin/fm-wake-lib.sh" "$home/bin/fm-wake-lib.sh"
   [ -e "$home/bin/fm-path-lib.sh" ] || ln -s "$ROOT/bin/fm-path-lib.sh" "$home/bin/fm-path-lib.sh"
+  [ -e "$home/bin/fm-git-origin-lib.sh" ] || ln -s "$ROOT/bin/fm-git-origin-lib.sh" "$home/bin/fm-git-origin-lib.sh"
   printf '%s\n' "$generator" > "$FAKEBIN/python3"
   chmod +x "$FAKEBIN/python3"
 }

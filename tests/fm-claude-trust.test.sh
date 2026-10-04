@@ -447,6 +447,81 @@ test_foreign_project_worktree_is_refused() {
   pass "fm-claude-trust.sh: refuses a worktree belonging to another project"
 }
 
+# A Treehouse pool is shared by every clone of one origin, so a secondmate
+# home's spawn can be handed a slot that is a worktree of another home's clone.
+# pooled_slot_of_other_clone <case-dir> <main-clone> <slot-name>: a pool laid out
+# as <pool>/<slot>/<repo> with its state file, holding a worktree of <main-clone>.
+pooled_slot_of_other_clone() {
+  local case_dir=$1 main=$2 slot=$3 pool="$1/pool"
+  mkdir -p "$pool/$slot"
+  printf '{"worktrees":[]}\n' > "$pool/treehouse-state.json"
+  git -C "$main" worktree add --quiet --detach "$pool/$slot/project"
+  printf '%s\n' "$pool/$slot/project"
+}
+
+test_pooled_worktree_of_another_clone_of_the_same_origin_is_trusted() {
+  local rec out main_wt second
+  rec=$(make_case same-origin-pool)
+  read_case "$rec"
+  main_wt=$(pooled_slot_of_other_clone "$CASE_DIR" "$PROJ" 1)
+  second="$CASE_DIR/second-home-project"
+  git clone --quiet "file://$PROJ.origin.git" "$second"
+  out=$(run_trust "$CONFIG" "$main_wt" "$second")
+  expect_code 0 $? "a pooled worktree of another clone of the same origin must be trusted: $out"
+  assert_trusted "$CONFIG/.claude.json" "$main_wt" "the pooled worktree was not trusted"
+  assert_trusted "$CONFIG/.claude.json" "$PROJ" "the slot's own canonical checkout was not trusted"
+  assert_not_trusted "$CONFIG/.claude.json" "$second" "the second home's clone was trusted though the worktree does not belong to it"
+  pass "fm-claude-trust.sh: trusts a pooled worktree of another clone of the same origin"
+}
+
+test_cross_clone_worktree_outside_a_pool_is_refused() {
+  local rec out second
+  rec=$(make_case same-origin-no-pool)
+  read_case "$rec"
+  second="$CASE_DIR/second-home-project"
+  git clone --quiet "file://$PROJ.origin.git" "$second"
+  out=$(run_trust "$CONFIG" "$WT" "$second")
+  expect_code 1 $? "a non-pooled worktree of another clone must be refused: $out"
+  assert_contains "$out" "is not a worktree of project" "the refusal did not name the project mismatch"
+  assert_not_trusted "$CONFIG/.claude.json" "$WT" "a non-pooled foreign worktree was trusted"
+  pass "fm-claude-trust.sh: refuses another clone's worktree that is not in a Treehouse pool"
+}
+
+test_pooled_worktree_of_an_unrelated_origin_is_refused() {
+  local rec out pooled other
+  rec=$(make_case pool-unrelated-origin)
+  read_case "$rec"
+  other="$CASE_DIR/other-project"
+  fm_git_init_commit "$other"
+  fm_git_add_origin "$other" "$other.origin.git"
+  pooled=$(pooled_slot_of_other_clone "$CASE_DIR" "$other" 1)
+  out=$(run_trust "$CONFIG" "$pooled" "$PROJ")
+  expect_code 1 $? "a pooled worktree of an unrelated origin must be refused: $out"
+  assert_contains "$out" "is not a worktree of project" "the refusal did not name the project mismatch"
+  assert_not_trusted "$CONFIG/.claude.json" "$pooled" "a pooled unrelated worktree was trusted"
+  pass "fm-claude-trust.sh: refuses a pooled worktree of an unrelated origin"
+}
+
+test_pool_slot_recognizes_another_clone_of_the_same_origin() {
+  local rec main_wt second other pooled_other
+  rec=$(make_case pool-slot-origin)
+  read_case "$rec"
+  main_wt=$(pooled_slot_of_other_clone "$CASE_DIR" "$PROJ" 1)
+  second="$CASE_DIR/second-home-project"
+  git clone --quiet "file://$PROJ.origin.git" "$second"
+  other="$CASE_DIR/other-project"
+  fm_git_init_commit "$other"
+  fm_git_add_origin "$other" "$other.origin.git"
+  pooled_other=$(pooled_slot_of_other_clone "$CASE_DIR" "$other" 2)
+  # shellcheck disable=SC2016
+  FM_HOME="$CASE_DIR" FM_ROOT="$ROOT" bash -c '. "$FM_ROOT/bin/fm-wake-lib.sh"; fm_treehouse_pool_slot "$1" "$2"' _ "$second" "$main_wt" \
+    || fail "a pool slot of another clone of the same origin was not recognized as the project's slot"
+  # shellcheck disable=SC2016
+  FM_HOME="$CASE_DIR" FM_ROOT="$ROOT" bash -c '. "$FM_ROOT/bin/fm-wake-lib.sh"; fm_treehouse_pool_slot "$1" "$2"' _ "$second" "$pooled_other" \
+    && fail "a pool slot of an unrelated origin was recognized as the project's slot"
+  pass "fm_treehouse_pool_slot: matches slots by origin across clones and still rejects unrelated ones"
+}
+
 test_worktree_subdirectory_is_refused() {
   local rec out sub
   rec=$(make_case subdir)
@@ -856,6 +931,10 @@ test_relative_config_dir_is_refused
 test_non_git_directory_is_refused
 test_missing_directory_is_refused
 test_foreign_project_worktree_is_refused
+test_pooled_worktree_of_another_clone_of_the_same_origin_is_trusted
+test_cross_clone_worktree_outside_a_pool_is_refused
+test_pooled_worktree_of_an_unrelated_origin_is_refused
+test_pool_slot_recognizes_another_clone_of_the_same_origin
 test_worktree_subdirectory_is_refused
 test_project_argument_that_is_itself_a_worktree_resolves_to_the_primary_checkout
 test_unrelated_store_content_is_preserved
