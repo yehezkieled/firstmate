@@ -1,0 +1,3 @@
+fm_treehouse_pool_slot secondhome/projects/hive /tmp/fm-pooltrust.f1FFAG/pools/.treehouse/hive-6c0bf4/1/hive -> recognized
+fm_treehouse_pool_slot secondhome/projects/hive /tmp/fm-pooltrust.f1FFAG/pools/.treehouse/other-c6f4ae/1/other -> rejected
+fm_treehouse_pool_slot secondhome/projects/hive /tmp/fm-pooltrust.f1FFAG/loose-wt -> rejected

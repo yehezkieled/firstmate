@@ -1,0 +1,26 @@
+### Real treehouse pool (TREEHOUSE_ROOT=/tmp/fm-pooltrust.f1FFAG/pools), origin /tmp/fm-pooltrust.f1FFAG/hive.git
+$ (cd secondhome/projects/hive && treehouse get --lease --no-fetch)
+/tmp/fm-pooltrust.f1FFAG/pools/.treehouse/hive-6c0bf4/1/hive
+$ git -C <slot> rev-parse --git-common-dir   # slot belongs to MAIN home's clone
+/tmp/fm-pooltrust.f1FFAG/mainhome/projects/hive/.git
+
+### BASE b6b3f3a3: fm-claude-trust.sh <slot> <secondhome/projects/hive>
+error: refusing to pre-register Claude trust: '/tmp/fm-pooltrust.f1FFAG/pools/.treehouse/hive-6c0bf4/1/hive' is not a worktree of project '/tmp/fm-pooltrust.f1FFAG/secondhome/projects/hive'
+exit=1
+
+### FIX 80809ebc: fm-claude-trust.sh <slot> <secondhome/projects/hive>
+trusted: /tmp/fm-pooltrust.f1FFAG/pools/.treehouse/hive-6c0bf4/1/hive
+trusted (project root): /tmp/fm-pooltrust.f1FFAG/mainhome/projects/hive
+exit=0
+
+### resulting store (fix):
+[
+  {
+    "key": "/tmp/fm-pooltrust.f1FFAG/pools/.treehouse/hive-6c0bf4/1/hive",
+    "trust": true
+  },
+  {
+    "key": "/tmp/fm-pooltrust.f1FFAG/mainhome/projects/hive",
+    "trust": true
+  }
+]

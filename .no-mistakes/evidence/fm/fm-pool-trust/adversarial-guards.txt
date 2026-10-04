@@ -1,0 +1,29 @@
+### A: real treehouse slot of an UNRELATED origin, project = second home's hive
+$ fm-claude-trust.sh /tmp/fm-pooltrust.f1FFAG/pools/.treehouse/other-c6f4ae/1/other /tmp/fm-pooltrust.f1FFAG/secondhome/projects/hive
+error: refusing to pre-register Claude trust: '/tmp/fm-pooltrust.f1FFAG/pools/.treehouse/other-c6f4ae/1/other' is not a worktree of project '/tmp/fm-pooltrust.f1FFAG/secondhome/projects/hive'
+exit=1
+
+### B: plain linked worktree of main clone (not in a pool), project = second home's hive
+$ fm-claude-trust.sh /tmp/fm-pooltrust.f1FFAG/loose-wt /tmp/fm-pooltrust.f1FFAG/secondhome/projects/hive
+error: refusing to pre-register Claude trust: '/tmp/fm-pooltrust.f1FFAG/loose-wt' is not a worktree of project '/tmp/fm-pooltrust.f1FFAG/secondhome/projects/hive'
+exit=1
+
+### C: pool state file is a symlink
+$ fm-claude-trust.sh /tmp/fm-pooltrust.f1FFAG/fakepool/1/hive /tmp/fm-pooltrust.f1FFAG/secondhome/projects/hive
+error: refusing to pre-register Claude trust: '/tmp/fm-pooltrust.f1FFAG/fakepool/1/hive' is not a worktree of project '/tmp/fm-pooltrust.f1FFAG/secondhome/projects/hive'
+exit=1
+
+### D: primary checkout of the main clone passed as worktree
+$ fm-claude-trust.sh /tmp/fm-pooltrust.f1FFAG/mainhome/projects/hive /tmp/fm-pooltrust.f1FFAG/secondhome/projects/hive
+error: refusing to pre-register Claude trust: '/tmp/fm-pooltrust.f1FFAG/mainhome/projects/hive' is a primary checkout, not an isolated worktree
+exit=1
+
+### E: same-home pooled slot still works (project = main home's hive)
+$ fm-claude-trust.sh /tmp/fm-pooltrust.f1FFAG/pools/.treehouse/hive-6c0bf4/1/hive /tmp/fm-pooltrust.f1FFAG/mainhome/projects/hive
+trusted: /tmp/fm-pooltrust.f1FFAG/pools/.treehouse/hive-6c0bf4/1/hive
+trusted (project root): /tmp/fm-pooltrust.f1FFAG/mainhome/projects/hive
+exit=0
+
+### store after A-D (expect only E's entries):
+/tmp/fm-pooltrust.f1FFAG/mainhome/projects/hive
+/tmp/fm-pooltrust.f1FFAG/pools/.treehouse/hive-6c0bf4/1/hive
