@@ -1,0 +1,16 @@
+ok - fm-claude-trust.sh: a fresh task worktree is trusted
+ok - fm-claude-trust.sh: a fresh registration trusts the project root without manufacturing import consent
+ok - fm-claude-trust.sh: carries forward a project's already-granted import consent to the worktree entry
+ok - fm-claude-trust.sh: preserves unrelated keys on the project-root entry
+ok - fm-claude-trust.sh: refuses to override a project's declined external-imports consent
+ok - fm-claude-trust.sh: a never-asked default external-imports pair is not treated as a decline
+ok - fm-claude-trust.sh: repeat registration is idempotent
+ok - fm-claude-trust.sh: refuses the primary checkout
+ok - fm-claude-trust.sh: an exported CDPATH cannot defeat the scope refusal
+ok - fm-claude-trust.sh: inherited git environment overrides cannot defeat the scope refusal
+ok - fm-claude-trust.sh: refuses a home directory the git checks would accept
+ok - fm-claude-trust.sh: refuses the Claude config directory
+ok - fm-claude-trust.sh: refuses a relative CLAUDE_CONFIG_DIR
+not ok - the refusal did not name the missing repository (missing: 'not inside a git repository')
+--- output ---
+error: refusing to pre-register Claude trust: '/home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M44TMRBNZGWJSXGP7RYF689M/.test-tmp/fm-claude-trust.MJfP38/plain/plain' is not a worktree root (its root is '/home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M44TMRBNZGWJSXGP7RYF689M')

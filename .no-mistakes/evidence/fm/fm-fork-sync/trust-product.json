@@ -1,0 +1,49 @@
+[
+  {
+    "scenario": "same-origin pooled slot",
+    "exit": 0,
+    "output": "trusted: /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M44TMRBNZGWJSXGP7RYF689M/.test-tmp/manual-trust-9qgmdwss/pool/1/project\ntrusted (project root): /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M44TMRBNZGWJSXGP7RYF689M/.test-tmp/manual-trust-9qgmdwss/main\n"
+  },
+  {
+    "scenario": "primary checkout guard",
+    "exit": 1,
+    "output": "error: refusing to pre-register Claude trust: '/home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M44TMRBNZGWJSXGP7RYF689M/.test-tmp/manual-trust-9qgmdwss/main' is a primary checkout, not an isolated worktree\n"
+  },
+  {
+    "persisted_store": {
+      "projects": {
+        "/home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M44TMRBNZGWJSXGP7RYF689M/.test-tmp/manual-trust-9qgmdwss/pool/1/project": {
+          "hasTrustDialogAccepted": true
+        },
+        "/home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M44TMRBNZGWJSXGP7RYF689M/.test-tmp/manual-trust-9qgmdwss/main": {
+          "hasTrustDialogAccepted": true
+        }
+      }
+    }
+  },
+  {
+    "scenario": "same-origin outside pool guard",
+    "exit": 1,
+    "output": "error: refusing to pre-register Claude trust: '/home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M44TMRBNZGWJSXGP7RYF689M/.test-tmp/manual-trust-9qgmdwss/outside' is not a worktree of project '/home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M44TMRBNZGWJSXGP7RYF689M/.test-tmp/manual-trust-9qgmdwss/second'\n"
+  },
+  {
+    "scenario": "unrelated-origin pooled slot guard",
+    "exit": 1,
+    "output": "error: refusing to pre-register Claude trust: '/home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M44TMRBNZGWJSXGP7RYF689M/.test-tmp/manual-trust-9qgmdwss/pool/2/project' is not a worktree of project '/home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M44TMRBNZGWJSXGP7RYF689M/.test-tmp/manual-trust-9qgmdwss/second'\n"
+  },
+  {
+    "scenario": "pool slot recognition",
+    "path": "/home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M44TMRBNZGWJSXGP7RYF689M/.test-tmp/manual-trust-9qgmdwss/pool/1/project",
+    "exit": 0,
+    "output": ""
+  },
+  {
+    "scenario": "pool slot recognition",
+    "path": "/home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M44TMRBNZGWJSXGP7RYF689M/.test-tmp/manual-trust-9qgmdwss/pool/2/project",
+    "exit": 1,
+    "output": ""
+  },
+  {
+    "result": "all direct product interface assertions passed"
+  }
+]
