@@ -1,0 +1,6 @@
+ok - real claude 2.1.295: the folder-trust prompt is recognized and fm-control exit stops Claude without trusting the folder
+ok - real claude 2.1.295: the external CLAUDE.md imports prompt is recognized and fm-control exit stops Claude without approving the imports
+
+real	0m3.178s
+user	0m0.767s
+sys	0m0.473s

@@ -1,0 +1,68 @@
+=== viewport of gw-2182303 before the sweep (real claude 2.1.295 (Claude Code)) ===
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Allow external CLAUDE.md file imports?
+  This project's CLAUDE.md or .claude/rules imports files outside the current working directory. Never allow this for third-party repositories.
+  External imports:
+    /tmp/fm-live-scn/lab.16xXYI/outside.md
+  Important: Only use Claude Code with files you trust. Accessing untrusted files may pose security risks https://code.claude.com/docs/en/security
+  ❯ No, disable external imports
+    Yes, allow external imports
+  Enter to confirm · Esc to cancel
+agent_state=alive gate=Claude external CLAUDE.md imports prompt
+
+=== operator: fm-restored-recover.sh --dry-run ===
+RESTORED_WORKER: gw-2182303: was parked on the Claude external CLAUDE.md imports prompt; not relaunched (dry run)
+RESTORED_WORKER: drift: was running in /tmp/fm-live-scn/lab.16xXYI/drift/proj instead of its recorded worktree; not relaunched (dry run)
+rc=0
+agent still alive after dry run: alive
+
+=== bootstrap path: fm-restored-recover.sh --background (returns at once, prints nothing) ===
+rc=0 output=[] took=0s
+--- results file .restored-recover.results.20261008T213656Z.2182838 ---
+RESTORED_WORKER: drift: was running in $LAB/drift/proj instead of its recorded worktree; not relaunched: a tmux relaunch cannot move its endpoint back into $LAB/drift/wt
+BOOTSTRAP_INFO: worker gw-2182303 was parked on the Claude external CLAUDE.md imports prompt; relaunched in its recorded worktree $LAB/gw-2182303/wt
+--- wake queue entries ---
+1791495419	1	check	restored-workers	check: restored-workers: restart recovery has results that need attention; read $LAB/home/state/.restored-recover.results.20261008T213656Z.2182838
+--- control-relaunch journal of gw-2182303 ---
+v1
+task=gw-2182303
+phase=complete
+ts=2026-10-08T21:36:58Z
+backend=tmux
+endpoint=fmses:fm-gw-2182303
+worktree=$LAB/gw-2182303/wt
+kind=ship
+from_harness=claude
+from_model=default
+from_effort=default
+to_harness=claude
+to_model=default
+to_effort=default
+worktree_head=615c741df1de459c3ad0fd3ef14a94ae53c92a5c
+worktree_dirty=yes
+note_file=$LAB/home/state/gw-2182303.control-relaunch.note
+exit_result=stopped-at-startup-gate
+--- after: gw-2182303 agent_state=alive cwd=$LAB/gw-2182303/wt cmd=claude
+--- real claude processes left for gw-2182303: 0
+--- brief note appended ---
+Your terminal was found with your previous session parked on the Claude external CLAUDE.md imports prompt.
+--- imports consent recorded? none
+
+=== second sweep (now healthy, drift still reported only) ===
+RESTORED_WORKER: drift: was running in /tmp/fm-live-scn/lab.16xXYI/drift/proj instead of its recorded worktree; not relaunched: a tmux relaunch cannot move its endpoint back into /tmp/fm-live-scn/lab.16xXYI/drift/wt
+rc=0
+rm: cannot remove '/tmp/fm-live-scn/lab.16xXYI/home/state/gw-2182303.git-hooks/sendemail-validate': Permission denied
+rm: cannot remove '/tmp/fm-live-scn/lab.16xXYI/home/state/gw-2182303.git-hooks/pre-auto-gc': Permission denied
+rm: cannot remove '/tmp/fm-live-scn/lab.16xXYI/home/state/gw-2182303.git-hooks/post-rewrite': Permission denied
+rm: cannot remove '/tmp/fm-live-scn/lab.16xXYI/home/state/gw-2182303.git-hooks/pre-push': Permission denied
+rm: cannot remove '/tmp/fm-live-scn/lab.16xXYI/home/state/gw-2182303.git-hooks/post-merge': Permission denied
+rm: cannot remove '/tmp/fm-live-scn/lab.16xXYI/home/state/gw-2182303.git-hooks/post-checkout': Permission denied
+rm: cannot remove '/tmp/fm-live-scn/lab.16xXYI/home/state/gw-2182303.git-hooks/pre-rebase': Permission denied
+rm: cannot remove '/tmp/fm-live-scn/lab.16xXYI/home/state/gw-2182303.git-hooks/post-commit': Permission denied
+rm: cannot remove '/tmp/fm-live-scn/lab.16xXYI/home/state/gw-2182303.git-hooks/prepare-commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-live-scn/lab.16xXYI/home/state/gw-2182303.git-hooks/pre-merge-commit': Permission denied
+rm: cannot remove '/tmp/fm-live-scn/lab.16xXYI/home/state/gw-2182303.git-hooks/pre-commit': Permission denied
+rm: cannot remove '/tmp/fm-live-scn/lab.16xXYI/home/state/gw-2182303.git-hooks/post-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-live-scn/lab.16xXYI/home/state/gw-2182303.git-hooks/pre-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-live-scn/lab.16xXYI/home/state/gw-2182303.git-hooks/applypatch-msg': Permission denied
+rm: cannot remove '/tmp/fm-live-scn/lab.16xXYI/home/state/gw-2182303.git-hooks/commit-msg': Permission denied
