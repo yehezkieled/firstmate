@@ -1,0 +1,33 @@
+$ edit --request-id lab-r1 --note first
+request=lab-r1
+status=applied
+owner=main
+at=1791498467
+detail=1 edit(s) applied
+exit=0
+$ replay same
+request=lab-r1
+status=replay
+owner=main
+at=1791498467
+detail=already applied: 1 edit(s) applied
+exit=0
+$ replay different content
+fm-ticket: request id lab-r1 was already used with different content
+exit=2
+$ owner of missing key in edit
+request=r-3d41939c171f58cb
+status=absent
+owner=none
+at=1791498467
+detail=no home carries ticket NOPE-9
+exit=3
+$ backlog
+5:- [ ] labproj-lab-check-ticket - Lab check ticket (repo: labproj) (priority: 1) (since 2026-10-09)
+6-  fork routing check
+7-  Note (main, 2026-10-08, request r-cd9b9f8dba60128c): edited via routed request
+8-  Ticket request r-cd9b9f8dba60128c applied (030166860c8cd53b).
+9-  Note (main, 2026-10-08, request lab-r1): first
+10-  Ticket request lab-r1 applied (ec410aaf9f12a427).
+11-
+12-## Done

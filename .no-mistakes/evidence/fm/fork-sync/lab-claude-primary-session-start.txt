@@ -1,0 +1,28 @@
+ ▐▛███▛█   Claude Code v2.1.295
+▝▜██████▀  Opus 5.5 · Claude Max
+ ▝▝   ▝▝   ~/.no-mistakes/worktrees/e677c3fe7f2c/01M4ESRFJ6M984WA47ZX3SX4RP
+❯ This is a disposable lab check. Confirm the session-start digest is present (run bin/fm-session-start.sh if not) and report whether the session lock was acquired. Then run bin/fm-ticket.sh owner
+  NOPE-1 and report its output verbatim. Do not dispatch any work.
+  Searched memories
+● Digest not present; running session start.
+  Ran 2 shell commands
+● Captain, here's the lab check. I dispatched no work.
+  Session start: The startup report wasn't in this session yet, so I ran bin/fm-session-start.sh once. This lab home is /tmp/fm-lab.9ggNB0.
+  - Lock: acquired (lock acquired: harness pid 3781019), so this session owns supervision normally.
+  - Nothing was queued or in progress. The backlog, project list, second mates, captain preferences and learnings files are all absent, which is expected for a throwaway lab home.
+  - quota-axi is missing (install with npm install -g quota-axi). The installed lavish-axi is older than 0.1.80 but still works.
+  - GitHub sign-in, clone refresh and the other network checks were still running when the report printed, so none of them count as passed yet.
+  bin/fm-ticket.sh owner NOPE-1 printed this verbatim and exited with code 1:
+  key=NOPE-1
+  owner=none
+  section=
+  remote=0
+  home=
+  candidates=
+  unreadable=
+✻ Baked for 15s · done 9:25 AM
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Opus 5.5 | ctx 63k/350k (max 1.0M) tokens | 5h 94% used (resets 09:40) | week 14% used (resets Fri 02:00)
+  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents

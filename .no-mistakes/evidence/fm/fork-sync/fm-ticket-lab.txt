@@ -1,0 +1,62 @@
+++ export FM_HOME=/tmp/fm-lab.9ggNB0
+++ FM_HOME=/tmp/fm-lab.9ggNB0
+++ unset FM_ROOT_OVERRIDE FM_STATE_OVERRIDE FM_DATA_OVERRIDE FM_CONFIG_OVERRIDE FM_PROJECTS_OVERRIDE
+++ bin/fm-ticket.sh new labproj 'Lab check ticket' --body 'fork routing check' --priority 2
+key=labproj-lab-check-ticket
+owner=main
+status=filed
+++ echo exit=0
+exit=0
++++ tasks-axi list
++++ head -20
+++ key=$'count: 0\ntasks: 0 tasks in this backlog\nhelp[2]:\n  - "Run `tasks-axi add <id> \\"<title>\\"` to add a task"\n  - Run `tasks-axi list --state done` to see completed work'
+++ echo $'count: 0\ntasks: 0 tasks in this backlog\nhelp[2]:\n  - "Run `tasks-axi add <id> \\"<title>\\"` to add a task"\n  - Run `tasks-axi list --state done` to see completed work'
+count: 0
+tasks: 0 tasks in this backlog
+help[2]:
+  - "Run `tasks-axi add <id> \"<title>\"` to add a task"
+  - Run `tasks-axi list --state done` to see completed work
+++ export FM_HOME=/tmp/fm-lab.9ggNB0
+++ FM_HOME=/tmp/fm-lab.9ggNB0
+++ bin/fm-ticket.sh owner labproj-lab-check-ticket
+key=labproj-lab-check-ticket
+owner=main
+section=Queued
+remote=0
+home=
+candidates=main
+unreadable=
+++ echo exit=0
+exit=0
+++ bin/fm-ticket.sh edit labproj-lab-check-ticket --note 'edited via routed request' --priority 1
+request=r-cd9b9f8dba60128c
+status=applied
+owner=main
+at=1791498459
+detail=2 edit(s) applied
+++ echo exit=0
+exit=0
+++ grep -n -A8 labproj-lab-check-ticket /tmp/fm-lab.9ggNB0/data/backlog.md
+++ local _cc_a
+++ for _cc_a in ${1+"$@"}
+++ case "$_cc_a" in
+++ for _cc_a in ${1+"$@"}
+++ case "$_cc_a" in
+++ for _cc_a in ${1+"$@"}
+++ case "$_cc_a" in
+++ for _cc_a in ${1+"$@"}
+++ case "$_cc_a" in
+++ local _cc_bin=/home/hezki/.local/lib/node_modules/@anthropic-ai/claude-code/bin/claude.exe
+++ [[ -x /home/hezki/.local/lib/node_modules/@anthropic-ai/claude-code/bin/claude.exe ]]
+++ [[ ! -x /home/hezki/.local/lib/node_modules/@anthropic-ai/claude-code/bin/claude.exe ]]
+++ [[ -n '' ]]
+++ [[ linux-gnu == msys ]]
+++ [[ linux-gnu == cygwin ]]
+++ [[ linux-gnu == win32 ]]
+++ exec -a ugrep /home/hezki/.local/lib/node_modules/@anthropic-ai/claude-code/bin/claude.exe -G --ignore-files --hidden -I --exclude-dir=.git --exclude-dir=.svn --exclude-dir=.hg --exclude-dir=.bzr --exclude-dir=.jj --exclude-dir=.sl -n -A8 labproj-lab-check-ticket /tmp/fm-lab.9ggNB0/data/backlog.md
+5:- [ ] labproj-lab-check-ticket - Lab check ticket (repo: labproj) (priority: 1) (since 2026-10-09)
+6-  fork routing check
+7-  Note (main, 2026-10-08, request r-cd9b9f8dba60128c): edited via routed request
+8-  Ticket request r-cd9b9f8dba60128c applied (030166860c8cd53b).
+9-
+10-## Done
