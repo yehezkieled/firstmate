@@ -21,8 +21,9 @@ A failed script's duration is excluded even when its lane uploaded an artifact.
 In particular, run 36664663190's serial 5 finished in 22m15s with an assertion failure, not a timeout; treating that as a healthy whole-lane sample would hide the failure.
 Collect successful per-script measurements for every member before calculating a split.
 
-`tests/fm-supervision-host.test.sh` uses 789123 ms from run 36669175457, after the merged [host runtime fix](https://github.com/kunchenguid/firstmate/pull/6179), rather than its pre-fix maximum of 1065298 ms.
-That post-fix value has only one sample in this baseline, so further green runs must establish its variance.
+`tests/fm-supervision-host.test.sh` uses 1176691 ms, the slowest of four green post-[host runtime fix](https://github.com/kunchenguid/firstmate/pull/6179) samples (930562-1176691 ms) from runs [37699232582](https://github.com/kunchenguid/firstmate/actions/runs/37699232582), [37720051397](https://github.com/kunchenguid/firstmate/actions/runs/37720051397), [37739997864](https://github.com/kunchenguid/firstmate/actions/runs/37739997864), and [37829693397](https://github.com/kunchenguid/firstmate/actions/runs/37829693397).
+The earlier single 789123 ms sample understated that variance and packed the script beside other work, so its shard reached the 30-minute cap; the measured hint keeps it alone on its shard.
+`tests/fm-ticket.test.sh` uses 30388 ms from the completed `FM_TEST_END` marker of [yehezkieled/firstmate run 37855223232](https://github.com/yehezkieled/firstmate/actions/runs/37855223232).
 The native-Windows-only `tests/fm-pi-windows-shell-invocation.test.sh` retains its separate 5121 ms measurement from 2026-09-06T21:02Z instead of a portable capability skip.
 The session-start hint retains its pre-optimization maximum until CI measures the shorter fixture-only home-summary bound; do not discount a local speedup from CI packing weights.
 
