@@ -232,7 +232,8 @@ run_control() {  # <args...>
 # --- detection -----------------------------------------------------------
 #
 # Every shape a restore can leave, in one home, read once: a gate-parked agent
-# inside its worktree, a healthy agent in the primary checkout, a healthy
+# inside its worktree, a healthy agent in the primary checkout (drift counts
+# only on Herdr, since a tmux server does not survive a restart), a healthy
 # agent in its worktree and in a subdirectory of it, a shell-only pane outside
 # it, and a remote secondmate that names a local endpoint.
 new_task gate wt "$LAB/imports-gate.txt"
@@ -247,12 +248,10 @@ PANE_WRAPPER="$LAB/busy-pane.sh" new_task busy wt "$LAB/composer.txt"
   || fail "the shell-only pane does not read dead, so the husk case below proves nothing"
 
 OUT=$(run_recover --dry-run) || fail "the dry run exited nonzero: $OUT"
-EXPECTED="RESTORED_WORKER: drift: was running in $LAB/drift/proj instead of its recorded worktree; not relaunched (dry run)
-RESTORED_WORKER: gate: was parked on the Claude external CLAUDE.md imports prompt; not relaunched (dry run)"
-EXPECTED=$(printf '%s\n' "$EXPECTED" | sort)
-[ "$(printf '%s\n' "$OUT" | sort)" = "$EXPECTED" ] || fail "the dry run should name exactly the gate-parked and drifted workers, got:
+[ "$OUT" = "RESTORED_WORKER: gate: was parked on the Claude external CLAUDE.md imports prompt; not relaunched (dry run)" ] \
+  || fail "the dry run should name exactly the gate-parked worker, got:
 $OUT"
-pass "a restored worker is flagged when parked on a startup gate or running outside its worktree, and no other shape is"
+pass "a restored tmux worker is flagged when parked on a startup gate, and no other shape is"
 
 [ "$(fm_backend_agent_state tmux "$SESSION:fm-gate")" = alive ] \
   || fail "a dry run must not stop anything"
@@ -307,10 +306,10 @@ pass "fm-control exit sends KILL to a gate-parked agent that TERM did not stop, 
 
 # --- recovery outcome ----------------------------------------------------
 #
-# Neither a drifted tmux endpoint nor a relaunch that cannot complete may cost
-# the worker its running agent or its work. A tmux relaunch never moves an
-# endpoint back into its worktree, so a drifted one is reported rather than
-# stopped. A gate-parked worker whose instructions are gone is relaunched, and
+# Neither a tmux endpoint outside its worktree nor a relaunch that cannot
+# complete may cost the worker its running agent or its work. A tmux endpoint
+# outside its worktree is not a restored worker, so it gets no line and keeps
+# its agent. A gate-parked worker whose instructions are gone is relaunched, and
 # the relaunch refuses before it stops anything; the sweep reports that as one
 # actionable line naming the cause and the relaunch's own error.
 tmux kill-window -t "$SESSION:fm-gate"
@@ -319,10 +318,8 @@ new_task nobrief wt "$LAB/imports-gate.txt"
 rm -f "$LAB/home/data/nobrief/brief.md"
 printf 'unlanded\n' > "$LAB/nobrief/wt/work-in-progress.txt"
 OUT=$(run_recover) || fail "the sweep exited nonzero: $OUT"
-EXPECTED="RESTORED_WORKER: drift: was running in $LAB/drift/proj instead of its recorded worktree; not relaunched: a tmux relaunch cannot move its endpoint back into $LAB/drift/wt
-RESTORED_WORKER: nobrief: was parked on the Claude external CLAUDE.md imports prompt; relaunch failed: task nobrief has no instructions at $LAB/home/data/nobrief/brief.md; refusing to relaunch a worker with nothing to work from"
-EXPECTED=$(printf '%s\n' "$EXPECTED" | sort)
-[ "$(printf '%s\n' "$OUT" | sort)" = "$EXPECTED" ] || fail "the sweep should report the drifted tmux worker and the failed relaunch, got:
+[ "$OUT" = "RESTORED_WORKER: nobrief: was parked on the Claude external CLAUDE.md imports prompt; relaunch failed: task nobrief has no instructions at $LAB/home/data/nobrief/brief.md; refusing to relaunch a worker with nothing to work from" ] \
+  || fail "the sweep should report only the failed relaunch, got:
 $OUT"
 for id in drift nobrief; do
   [ "$(fm_backend_agent_state tmux "$SESSION:fm-$id")" = alive ] \
@@ -330,7 +327,9 @@ for id in drift nobrief; do
 done
 [ -f "$LAB/nobrief/wt/work-in-progress.txt" ] \
   || fail "the worktree's uncommitted work is gone"
-pass "a worker the sweep cannot relaunch is reported with its cause and keeps its agent and its work"
+[ ! -e "$LAB/home/state/drift.control-relaunch" ] \
+  || fail "the sweep relaunched the tmux endpoint outside its worktree"
+pass "a tmux endpoint outside its worktree is left alone, and a worker the sweep cannot relaunch is reported with its cause and keeps its agent and its work"
 
 # A gate-parked worker in its worktree is stopped without answering the gate
 # and relaunched in place through the ordinary relaunch, with the cause
@@ -395,13 +394,14 @@ pass "an endpoint that stays unreadable past the settle window is reported as no
 # that group, run under its own bound, publish each worker's line as soon as it
 # is settled, and raise a wake for anything actionable. The launcher here runs
 # in its own process group and is killed the moment --background returns. One
-# worker is reported quickly (a drifted tmux endpoint); the other ignores TERM,
-# so its stop outlasts the job's 3s bound.
+# worker is reported quickly (a relaunch refused for missing instructions); the
+# other ignores TERM, so its stop outlasts the job's 6s bound.
 for w in $(tmux list-windows -t "$SESSION" -F '#{window_name}'); do
   [ "$w" = idle ] || tmux kill-window -t "$SESSION:$w"
 done
 rm -f "$LAB/home/state/"*.meta "$LAB/home/state/.wake-queue"
-new_task quick proj "$LAB/composer.txt"
+new_task quick wt "$LAB/imports-gate.txt"
+rm -f "$LAB/home/data/quick/brief.md"
 PANE_WRAPPER="$LAB/stubborn-pane.sh" new_task slow wt "$LAB/imports-gate.txt"
 results_files() {
   ls -1t "$LAB/home/state/.restored-recover.results."* 2>/dev/null
@@ -412,7 +412,7 @@ set -m
   env -u HERDR_ENV -u HERDR_PANE_ID -u HERDR_SESSION -u HERDR_SOCKET_PATH \
     -u HERDR_TAB_ID -u HERDR_WORKSPACE_ID \
     FM_HOME="$LAB/home" HOME="$LAB/user-home" CLAUDE_CONFIG_DIR='' \
-    FM_RESTORED_RECOVER_RECHECK=0.2 FM_RESTORED_RECOVER_TIMEOUT=3 \
+    FM_RESTORED_RECOVER_RECHECK=0.2 FM_RESTORED_RECOVER_TIMEOUT=6 \
     FM_CONTROL_POLL=0.1 FM_CONTROL_EXIT_WAIT=10 \
     "$RECOVER" --background
   : > "$LAB/launched"
@@ -428,12 +428,12 @@ wait "$LAUNCHER" 2>/dev/null
 
 i=0
 RESULTS=
-while ! grep -q '^RESTORED_WORKER: quick: ' "$RESULTS" 2>/dev/null && [ "$i" -lt 50 ]; do
+while ! grep -q '^RESTORED_WORKER: quick: ' "$RESULTS" 2>/dev/null && [ "$i" -lt 100 ]; do
   sleep 0.1
   i=$((i + 1))
   RESULTS=$(results_files | sed -n 1p)
 done
-grep -Fqx "RESTORED_WORKER: quick: was running in $LAB/quick/proj instead of its recorded worktree; not relaunched: a tmux relaunch cannot move its endpoint back into $LAB/quick/wt" "$RESULTS" \
+grep -Fqx "RESTORED_WORKER: quick: was parked on the Claude external CLAUDE.md imports prompt; relaunch failed: task quick has no instructions at $LAB/home/data/quick/brief.md; refusing to relaunch a worker with nothing to work from" "$RESULTS" \
   || fail "the quick worker's line was never published; results:
 $(cat "$RESULTS" 2>/dev/null)"
 [ -e "$SWEEP_LOCK" ] || fail "the job had already finished when the quick worker's line appeared, so this proves nothing about publishing early"
@@ -443,7 +443,7 @@ pass "the detached job outlives its launcher's process group and publishes each 
 i=0
 while [ -e "$SWEEP_LOCK" ] && [ "$i" -lt 100 ]; do sleep 0.1; i=$((i + 1)); done
 [ ! -e "$SWEEP_LOCK" ] || fail "the job outlived its own bound"
-grep -Fqx "RESTORED_WORKER: sweep: stopped by its 3s bound (FM_RESTORED_RECOVER_TIMEOUT); a worker with no line above was not confirmed recovered" "$RESULTS" \
+grep -Fqx "RESTORED_WORKER: sweep: stopped by its 6s bound (FM_RESTORED_RECOVER_TIMEOUT); a worker with no line above was not confirmed recovered" "$RESULTS" \
   || fail "the expired bound was not recorded; results:
 $(cat "$RESULTS")"
 [ "$(grep -c 'check: restored-workers' "$LAB/home/state/.wake-queue" 2>/dev/null)" = 1 ] \
@@ -465,7 +465,7 @@ run_job() {
 run_job || fail "a second job exited nonzero"
 SECOND_RESULTS=$(results_files | sed -n 1p)
 [ "$SECOND_RESULTS" != "$FIRST_RESULTS" ] || fail "the second job reused the first job's results file"
-grep -Fq 'RESTORED_WORKER: sweep: stopped by its 3s bound' "$FIRST_RESULTS" \
+grep -Fq 'RESTORED_WORKER: sweep: stopped by its 6s bound' "$FIRST_RESULTS" \
   || fail "the second job rewrote the results file the first wake names:
 $(cat "$FIRST_RESULTS" 2>/dev/null)"
 grep -q '^RESTORED_WORKER: quick: ' "$SECOND_RESULTS" \

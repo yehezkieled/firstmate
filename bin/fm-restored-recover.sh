@@ -22,17 +22,18 @@
 # herdr), whose agent reads `alive`, this sweep relaunches it through
 # `bin/fm-control.sh <id> relaunch` when either holds:
 #   - its viewport shows a harness startup gate (fm_composer_startup_dialog), or
-#   - its harness process runs outside its recorded worktree, read twice a
-#     moment apart so a transient read cannot trigger it. The directory is the
+#   - on Herdr, its harness process runs outside its recorded worktree, read
+#     twice a moment apart so a transient read cannot trigger it. The directory is the
 #     attributed harness pid's own (fm_backend_agent_pids; /proc/<pid>/cwd, or
 #     lsof on macOS), so a command the agent runs elsewhere never counts; the
 #     endpoint's foreground path stands in only when no pid's can be read.
-# A drifted endpoint is relaunched only on Herdr, whose relaunch moves the pane
-# back into the worktree, and, with no startup gate on screen, only once Herdr
+# Drift counts only on Herdr, whose relaunch moves the pane back into the
+# worktree; a tmux server does not survive a restart, so a tmux endpoint
+# outside its worktree is not a restored worker and is left alone. A drifted
+# Herdr endpoint with no startup gate on screen is relaunched only once Herdr
 # reads the agent idle, so a working turn is never interrupted: a verdict that
 # reads unknown is re-read like an unreadable endpoint below, and one that never
-# settles idle is reported rather than relaunched. Elsewhere a drifted endpoint
-# is reported rather than stopped.
+# settles idle is reported rather than relaunched.
 # The relaunch owns everything else: the checkpoint that proves the worktree and
 # its unlanded work are intact, stopping the old agent without answering any
 # gate, entering the recorded worktree, and launching the replacement there
@@ -56,7 +57,6 @@
 # OUTPUT, one line per affected task, nothing for a healthy fleet:
 #   BOOTSTRAP_INFO: worker <id> was <cause>; relaunched in its recorded worktree <path>
 #   RESTORED_WORKER: <id>: was <cause>; relaunch failed: <first error line>
-#   RESTORED_WORKER: <id>: was <cause>; not relaunched: a <backend> relaunch cannot move its endpoint back into <path>
 #   RESTORED_WORKER: <id>: was <cause>; not relaunched: its agent read <busy|unknown>, not idle
 #   RESTORED_WORKER: <id>: was <cause>; not relaunched (dry run)
 #   RESTORED_WORKER: <id>: its endpoint stayed unreadable for <n>s, so it was not checked
@@ -193,9 +193,9 @@ drifted() {  # <backend> <target> <worktree-real>
 }
 
 # restored_cause <backend> <target> <worktree-real>: why this alive agent needs
-# a relaunch, as "<drifted 0|1><TAB><cause>", or nothing. A drifted Herdr agent
-# with no gate on screen is relaunched only once its busy verdict settles idle;
-# otherwise the first field is that verdict instead.
+# a relaunch, as "<verdict><TAB><cause>", or nothing. The verdict is idle unless
+# a drifted Herdr agent with no gate on screen has a busy verdict that never
+# settled idle, in which case it is that verdict.
 restored_cause() {  # <backend> <target> <worktree-real>
   local backend=$1 target=$2 wt_real=$3 screen gate seen busy
   gate=
@@ -203,17 +203,15 @@ restored_cause() {  # <backend> <target> <worktree-real>
     && screen=$(fm_backend_visible_capture "$backend" "$target" 2>/dev/null); then
     gate=$(fm_composer_startup_dialog "$screen") || gate=
   fi
-  if seen=$(drifted "$backend" "$target" "$wt_real"); then
+  if [ "$backend" = herdr ] && seen=$(drifted "$backend" "$target" "$wt_real"); then
     if [ -n "$gate" ]; then
-      printf '1\tparked on the %s in %s instead of its recorded worktree' "$gate" "$seen"
+      printf 'idle\tparked on the %s in %s instead of its recorded worktree' "$gate" "$seen"
     else
-      busy=1
-      [ "$backend" != herdr ] || busy=$(settled unknown fm_backend_busy_state "$backend" "$target")
-      [ "$busy" != idle ] || busy=1
+      busy=$(settled unknown fm_backend_busy_state "$backend" "$target")
       printf '%s\trunning in %s instead of its recorded worktree' "$busy" "$seen"
     fi
   elif [ -n "$gate" ]; then
-    printf '0\tparked on the %s' "$gate"
+    printf 'idle\tparked on the %s' "$gate"
   else
     return 1
   fi
@@ -229,7 +227,7 @@ relaunch_note() {  # <cause> <worktree>
 
 # recover_one <meta> <id>: print at most one line for this task.
 recover_one() {  # <meta> <id>
-  local meta=$1 id=$2 kind wt wt_real backend target state cause drift out rc first
+  local meta=$1 id=$2 kind wt wt_real backend target state cause verdict out rc first
   kind=$(fm_meta_get "$meta" kind)
   [ -n "$kind" ] || kind=ship
   case "$kind" in ship|scout|secondmate) ;; *) return 0 ;; esac
@@ -248,25 +246,15 @@ recover_one() {  # <meta> <id>
   fi
   [ "$state" = alive ] || return 0
   cause=$(restored_cause "$backend" "$target" "$wt_real") || return 0
-  drift=${cause%%$'\t'*}
+  verdict=${cause%%$'\t'*}
   cause=${cause#*$'\t'}
   [ -n "$cause" ] || return 0
-  case "$drift" in
-    0|1) ;;
-    *)
-      echo "RESTORED_WORKER: $id: was $cause; not relaunched: its agent read $drift, not idle"
-      return 0
-      ;;
-  esac
-  if [ "$DRY_RUN" = 1 ]; then
-    echo "RESTORED_WORKER: $id: was $cause; not relaunched (dry run)"
+  if [ "$verdict" != idle ]; then
+    echo "RESTORED_WORKER: $id: was $cause; not relaunched: its agent read $verdict, not idle"
     return 0
   fi
-  # Only a Herdr relaunch moves a drifted endpoint back into its worktree
-  # (bin/fm-spawn.sh --relaunch); any other backend would stop the agent and
-  # then refuse to launch outside the worktree, so it is reported instead.
-  if [ "$drift" = 1 ] && [ "$backend" != herdr ]; then
-    echo "RESTORED_WORKER: $id: was $cause; not relaunched: a $backend relaunch cannot move its endpoint back into $wt"
+  if [ "$DRY_RUN" = 1 ]; then
+    echo "RESTORED_WORKER: $id: was $cause; not relaunched (dry run)"
     return 0
   fi
   rc=0
