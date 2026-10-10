@@ -1,0 +1,40 @@
+
+ ▐▛███▛█   Claude Code v2.1.296
+▝▜██████▀  Opus 5.5 · Claude Max
+ ▝▝   ▝▝   /tmp/fm-rr-claude.BybU4g/wt
+
+
+❯ : Firstmate operational input waiting: read
+  '/tmp/fm-rr-claude.BybU4g/home/state/operational-inbox/1791596280-d549c78f3cf2d05b.msg' and handle its contents as
+  Firstmate operational input.
+
+  Read 1 file
+
+● READY
+
+✻ Sautéed for 4s · done 12:38 PM
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Opus 5.5 | ctx 48k/350k (max 1.0M) tokens | 5h 8% used (resets 17:20) | week 37% used (resets Fri 02:00)
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents

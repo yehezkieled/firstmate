@@ -1,0 +1,32 @@
+== restored state: pane top shell in primary checkout, running claude there
+gate on screen: Claude external CLAUDE.md imports prompt
+agent state: unreadable
+old claude pid=2491693 cwd=/tmp/fm-rr-claude.UWeA1j/proj
+recorded worktree=/tmp/fm-rr-claude.UWeA1j/wt
+== run the restored-worker sweep (foreground)
+sweep rc=0 after 21s
+BOOTSTRAP_INFO: worker rrship was parked on the Claude external CLAUDE.md imports prompt in /tmp/fm-rr-claude.UWeA1j/proj instead of its recorded worktree; relaunched in its recorded worktree /tmp/fm-rr-claude.UWeA1j/wt
+== after: wait for replacement claude
+old pid alive: no
+new claude pid=2499231 cwd=/tmp/fm-rr-claude.UWeA1j/wt
+agent state: alive
+gate on screen now: none
+imports approved for primary checkout: unset
+control-relaunch marker: 4
+== second sweep on the now-healthy worker (expect no output)
+rc=0 output=[]
+rm: cannot remove '/tmp/fm-rr-claude.UWeA1j/home/state/rrship.git-hooks/sendemail-validate': Permission denied
+rm: cannot remove '/tmp/fm-rr-claude.UWeA1j/home/state/rrship.git-hooks/pre-auto-gc': Permission denied
+rm: cannot remove '/tmp/fm-rr-claude.UWeA1j/home/state/rrship.git-hooks/post-rewrite': Permission denied
+rm: cannot remove '/tmp/fm-rr-claude.UWeA1j/home/state/rrship.git-hooks/pre-push': Permission denied
+rm: cannot remove '/tmp/fm-rr-claude.UWeA1j/home/state/rrship.git-hooks/post-merge': Permission denied
+rm: cannot remove '/tmp/fm-rr-claude.UWeA1j/home/state/rrship.git-hooks/post-checkout': Permission denied
+rm: cannot remove '/tmp/fm-rr-claude.UWeA1j/home/state/rrship.git-hooks/pre-rebase': Permission denied
+rm: cannot remove '/tmp/fm-rr-claude.UWeA1j/home/state/rrship.git-hooks/post-commit': Permission denied
+rm: cannot remove '/tmp/fm-rr-claude.UWeA1j/home/state/rrship.git-hooks/prepare-commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-rr-claude.UWeA1j/home/state/rrship.git-hooks/pre-merge-commit': Permission denied
+rm: cannot remove '/tmp/fm-rr-claude.UWeA1j/home/state/rrship.git-hooks/pre-commit': Permission denied
+rm: cannot remove '/tmp/fm-rr-claude.UWeA1j/home/state/rrship.git-hooks/post-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-rr-claude.UWeA1j/home/state/rrship.git-hooks/pre-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-rr-claude.UWeA1j/home/state/rrship.git-hooks/applypatch-msg': Permission denied
+rm: cannot remove '/tmp/fm-rr-claude.UWeA1j/home/state/rrship.git-hooks/commit-msg': Permission denied

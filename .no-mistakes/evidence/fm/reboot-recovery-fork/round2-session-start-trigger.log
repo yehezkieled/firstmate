@@ -1,0 +1,15 @@
+gated: gate on screen: Claude folder-trust prompt; agent state: alive
+nobrief: gate on screen: Claude folder-trust prompt; agent state: alive
+== run bin/fm-session-start.sh in the lab home
+session-start rc=0 in 2s
+127:NOT yet confirmed: GitHub authentication, dead-secondmate relaunch, restored-worker recovery, secondmate convergence, pending handoff delivery, project clone refresh with its drift reporting, and inactive terminal-outcome reconciliation.
+== wait for the detached job's results
+results file: /tmp/fm-lab.QVLpdI/state/.restored-recover.results.20261010T013103Z.2543038
+RESTORED_WORKER: nobrief: was parked on the Claude folder-trust prompt; relaunch failed: task nobrief has no instructions at /tmp/fm-lab.QVLpdI/data/nobrief/brief.md; refusing to relaunch a worker with nothing to work from
+BOOTSTRAP_INFO: worker gated was parked on the Claude folder-trust prompt; relaunched in its recorded worktree /tmp/fm-lab.QVLpdI/w-gated
+== after
+gated: agent=alive gate=none pid=2545388 cwd=/tmp/fm-lab.QVLpdI/w-gated
+nobrief: agent=alive gate=Claude folder-trust prompt pid=2538649 cwd=/tmp/fm-lab.QVLpdI/w-nobrief
+== wakes mentioning restored-workers
+/tmp/fm-lab.QVLpdI/state/.wake-queue:
+1791595865	2	check	restored-workers	check: restored-workers: restart recovery has results that need attention; read /tmp/fm-lab.QVLpdI/state/.restored-recover.results.20261010T013103Z.2543038

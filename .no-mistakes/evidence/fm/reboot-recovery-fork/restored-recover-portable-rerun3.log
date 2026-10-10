@@ -1,0 +1,11 @@
+ok - a restored tmux worker is flagged when parked on a startup gate, and no other shape is
+ok - an agent in its worktree that runs a command in another directory is not flagged or relaunched
+ok - fm-control exit stops an agent parked on a startup gate without answering it
+ok - fm-control exit stays idempotent once the gate-parked agent is gone
+ok - fm-control exit sends KILL to a gate-parked agent that TERM did not stop, even once the gate is gone
+ok - a tmux endpoint outside its worktree is left alone, and a worker the sweep cannot relaunch is reported with its cause and keeps its agent and its work
+ok - a gate-parked worker is relaunched in its worktree with the cause explained, and is healthy afterwards
+ok - an endpoint that turns readable inside the settle window is still checked
+ok - an endpoint that stays unreadable past the settle window is reported as not checked
+not ok - the quick worker's line was never published; results:
+RESTORED_WORKER: sweep: stopped by its 6s bound (FM_RESTORED_RECOVER_TIMEOUT); a worker with no line above was not confirmed recovered

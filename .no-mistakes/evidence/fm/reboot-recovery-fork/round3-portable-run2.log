@@ -1,0 +1,15 @@
+ok - a restored tmux worker is flagged when parked on a startup gate, and no other shape is
+ok - an agent in its worktree that runs a command in another directory is not flagged or relaunched
+ok - fm-control exit stops an agent parked on a startup gate without answering it
+ok - fm-control exit stays idempotent once the gate-parked agent is gone
+ok - fm-control exit sends KILL to a gate-parked agent that TERM did not stop, even once the gate is gone
+ok - a tmux endpoint outside its worktree is left alone, and a worker the sweep cannot relaunch is reported with its cause and keeps its agent and its work
+ok - a gate-parked worker is relaunched in its worktree with the cause explained, and is healthy afterwards
+ok - an endpoint that turns readable inside the settle window is still checked
+ok - an endpoint that stays unreadable past the settle window is reported as not checked
+ok - the detached job outlives its launcher's process group and publishes each worker's line before the sweep finishes
+ok - the job honors its own bound, records that it expired, and raises one wake for actionable results
+ok - each job publishes to its own results file, named in its wake, and old results files are pruned
+ok - with the lease guard on, several gate-parked workers are all relaunched in their worktrees within the job's scaled bound
+ok - the sweep refuses without an explicit home
+exit=0

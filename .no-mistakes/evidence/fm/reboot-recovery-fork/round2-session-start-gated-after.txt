@@ -1,0 +1,50 @@
+
+ ▐▛███▛█   Claude Code v2.1.296
+▝▜██████▀  Opus 5.5 · Claude Max
+ ▝▝   ▝▝   /tmp/fm-lab.o3sObP/w-gated
+
+
+❯ : Firstmate operational input waiting: read '/tmp/fm-lab.o3sObP/state/operational-inbox/1791596363-67133c1a1c3002fc.msg' and handle its contents as Firstmate operational input.
+
+  Read 1 file
+
+● READY
+
+✻ Brewed for 6s · done 12:39 PM
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                                                                     tmux detected · scroll with PgUp/PgDn · or add 'set -g mouse on' to ~/.tmux.conf for wheel scroll
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Opus 5.5 | ctx 52k/350k (max 1.0M) tokens | 5h 9% used (resets 17:20) | week 37% used (resets Fri 02:00)
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents

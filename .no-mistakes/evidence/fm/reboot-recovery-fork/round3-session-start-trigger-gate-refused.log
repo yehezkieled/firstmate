@@ -1,0 +1,16 @@
+gated: gate on screen: Claude folder-trust prompt; agent state: alive
+nobrief: gate on screen: Claude folder-trust prompt; agent state: alive
+== run bin/fm-session-start.sh in the lab home
+session-start rc=0 in 2s
+127:NOT yet confirmed: GitHub authentication, dead-secondmate relaunch, restored-worker recovery, secondmate convergence, pending handoff delivery, project clone refresh with its drift reporting, and inactive terminal-outcome reconciliation.
+== wait for the detached job's results
+results file: /tmp/fm-lab.UsYCAy/state/.restored-recover.results.20261010T013816Z.2797441
+RESTORED_WORKER: nobrief: was parked on the Claude folder-trust prompt; relaunch failed: refusing fleet lifecycle from inside a no-mistakes gate worktree (/home/hezki/.no-mistakes/repos/e677c3fe7f2c.git)
+RESTORED_WORKER: gated: was parked on the Claude folder-trust prompt; relaunch failed: refusing fleet lifecycle from inside a no-mistakes gate worktree (/home/hezki/.no-mistakes/repos/e677c3fe7f2c.git)
+== after
+gated: agent=alive gate=Claude folder-trust prompt pid=2795143 cwd=/tmp/fm-lab.UsYCAy/w-gated
+nobrief: agent=alive gate=Claude folder-trust prompt pid=2795149 cwd=/tmp/fm-lab.UsYCAy/w-nobrief
+== wakes mentioning restored-workers
+/tmp/fm-lab.UsYCAy/state/.wake-queue:
+1791596296	1	check	restored-workers	check: restored-workers: restart recovery has results that need attention; read /tmp/fm-lab.UsYCAy/state/.restored-recover.results.20261010T013816Z.2797441
+exit=0

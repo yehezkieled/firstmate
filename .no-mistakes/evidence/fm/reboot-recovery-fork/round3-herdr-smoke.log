@@ -1,0 +1,3 @@
+ok - real herdr: a drifted agent that is busy, or whose busy state never settles, is reported and not relaunched
+ok - real herdr: a busy state that settles idle inside the window leads to a relaunch
+exit=0

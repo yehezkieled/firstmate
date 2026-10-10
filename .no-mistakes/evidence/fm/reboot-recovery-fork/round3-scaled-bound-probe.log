@@ -1,0 +1,7 @@
+candidates=1 env=[env] -> fm_run_timed 300
+candidates=3 env=[env] -> fm_run_timed 300
+candidates=4 env=[env] -> fm_run_timed 360
+candidates=8 env=[env] -> fm_run_timed 720
+candidates=8 env=[env FM_RESTORED_RECOVER_TIMEOUT=0] -> fm_run_timed 720
+candidates=8 env=[env FM_RESTORED_RECOVER_TIMEOUT=abc] -> fm_run_timed 720
+candidates=8 env=[env FM_RESTORED_RECOVER_TIMEOUT=45] -> fm_run_timed 45
