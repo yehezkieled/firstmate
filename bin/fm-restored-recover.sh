@@ -25,8 +25,8 @@
 #   - on Herdr, its harness process runs outside its recorded worktree, read
 #     twice a moment apart so a transient read cannot trigger it. The directory is the
 #     attributed harness pid's own (fm_backend_agent_pids; /proc/<pid>/cwd, or
-#     lsof on macOS), so a command the agent runs elsewhere never counts; the
-#     endpoint's foreground path stands in only when no pid's can be read.
+#     lsof on macOS), so a command the agent runs elsewhere never counts; with
+#     no readable harness pid directory there is no drift evidence.
 # Drift counts only on Herdr, whose relaunch moves the pane back into the
 # worktree; a tmux server does not survive a restart, so a tmux endpoint
 # outside its worktree is not a restored worker and is left alone. A drifted
@@ -161,23 +161,18 @@ settled() {  # <unsettled> <reader...>
 
 # agent_path <backend> <target>: the working directory of the attributed
 # harness process itself, so a command the agent runs elsewhere is not read as
-# the agent being elsewhere; the endpoint's foreground path only when no
-# harness pid's directory can be read.
+# the agent being elsewhere; fails when no harness pid's directory can be read.
 agent_path() {  # <backend> <target>
   local pid cwd
   pid=$(fm_backend_agent_pids "$1" "$2" 2>/dev/null | sed -n 1p)
-  if [ -n "$pid" ]; then
-    if [ -d "/proc/$pid" ]; then
-      cwd=$(readlink "/proc/$pid/cwd" 2>/dev/null) || cwd=
-    else
-      cwd=$(lsof -a -d cwd -p "$pid" -Fn 2>/dev/null | sed -n 's/^n//p' | sed -n 1p)
-    fi
-    if [ -n "$cwd" ]; then
-      printf '%s' "$cwd"
-      return 0
-    fi
+  [ -n "$pid" ] || return 1
+  if [ -d "/proc/$pid" ]; then
+    cwd=$(readlink "/proc/$pid/cwd" 2>/dev/null) || cwd=
+  else
+    cwd=$(lsof -a -d cwd -p "$pid" -Fn 2>/dev/null | sed -n 's/^n//p' | sed -n 1p)
   fi
-  fm_backend_current_path "$1" "$2" 2>/dev/null
+  [ -n "$cwd" ] || return 1
+  printf '%s' "$cwd"
 }
 
 # drifted <backend> <target> <worktree-real>: true when the agent runs

@@ -1035,20 +1035,6 @@ fm_backend_agent_pids() {  # <backend> <target>
   esac
 }
 
-# fm_backend_current_path: the working directory of the process in <target>'s
-# foreground, or nothing when unreadable, on the same two backends. Herdr reads
-# its own foreground_cwd and tmux its pane_current_path, both of which follow
-# the foreground process rather than the pane's top shell.
-fm_backend_current_path() {  # <backend> <target>
-  local backend=$1 target=$2
-  fm_backend_source "$backend" || return 1
-  case "$backend" in
-    tmux) fm_backend_tmux_current_path "$target" ;;
-    herdr) fm_backend_herdr_current_path "$target" ;;
-    *) return 1 ;;
-  esac
-}
-
 # Backward-compatible three-state view for existing callers. An
 # authoritatively missing endpoint is confidently not a live agent, while every
 # ambiguous, unreadable, or unverified result stays unknown.
