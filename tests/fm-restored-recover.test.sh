@@ -25,7 +25,8 @@ command -v tmux >/dev/null 2>&1 || { echo "skip: tmux not found"; exit 0; }
 # Pin the lab's primary harness so the result does not depend on which harness
 # runs the suite: a detected Claude primary turns on the supervision host's
 # lease guard, whose home-wide command lock serializes concurrent fm-control
-# relaunches and makes the detached-job case's timing host-dependent.
+# relaunches and makes the detached-job case's timing host-dependent. The
+# lease-guard case near the end turns that guard on deliberately.
 export FM_TEST_HARNESS=unknown
 
 REAL_TMUX=$(command -v tmux)
@@ -40,12 +41,15 @@ CONTROL="$ROOT/bin/fm-control.sh"
 # so the relaunched task's id is unique to this run and its directories are
 # removed with the lab.
 OK_ID="ok-$$"
+LEASE_IDS="lease1-$$ lease2-$$ lease3-$$"
 cleanup_all() {
-  local d
+  local d id
   "$REAL_TMUX" -L "$SOCKET" kill-server >/dev/null 2>&1 || true
   [ -n "${LAB:-}" ] && fm_test_remove_tree "$LAB"
-  for d in "/tmp/fm-$OK_ID" "/tmp/fm-$OK_ID+"*; do
-    [ -e "$d" ] && fm_test_remove_tree "$d"
+  for id in "$OK_ID" $LEASE_IDS; do
+    for d in "/tmp/fm-$id" "/tmp/fm-$id+"*; do
+      [ -e "$d" ] && fm_test_remove_tree "$d"
+    done
   done
   fm_test_cleanup
 }
@@ -486,6 +490,40 @@ for i in 1 2 3 4 5; do run_job || fail "job $i exited nonzero"; done
 $(results_files)"
 [ ! -e "$FIRST_RESULTS" ] || fail "the oldest results file was not pruned"
 pass "each job publishes to its own results file, named in its wake, and old results files are pruned"
+
+# --- relaunches behind the lease command lock ----------------------------
+#
+# On a Claude primary the supervision host's lease guard holds a home-wide
+# command lock for each whole fm-control run, so the job's relaunches run one
+# at a time. Several gate-parked workers must all still come back relaunched
+# in their worktrees inside the job's default bound, which scales with them.
+for w in $(tmux list-windows -t "$SESSION" -F '#{window_name}'); do
+  [ "$w" = idle ] || tmux kill-window -t "$SESSION:$w"
+done
+rm -f "$LAB/home/state/"*.meta "$LAB/home/state/.wake-queue"
+for id in $LEASE_IDS; do new_task "$id" wt "$LAB/imports-gate.txt"; done
+env -u HERDR_ENV -u HERDR_PANE_ID -u HERDR_SESSION -u HERDR_SOCKET_PATH \
+  -u HERDR_TAB_ID -u HERDR_WORKSPACE_ID -u FM_RESTORED_RECOVER_TIMEOUT \
+  FM_TEST_HARNESS=claude FM_HOME="$LAB/home" HOME="$LAB/user-home" CLAUDE_CONFIG_DIR='' \
+  FM_RESTORED_RECOVER_RECHECK=0.2 \
+  FM_CONTROL_POLL=0.1 FM_CONTROL_EXIT_WAIT=3 FM_CONTROL_LAUNCH_WAIT=0.5 \
+  "$RECOVER" --job || fail "the lease-guarded job exited nonzero"
+RESULTS=$(results_files | sed -n 1p)
+for id in $LEASE_IDS; do
+  grep -Fqx "BOOTSTRAP_INFO: worker $id was parked on the Claude external CLAUDE.md imports prompt; relaunched in its recorded worktree $LAB/$id/wt" "$RESULTS" \
+    || fail "$id was not relaunched behind the lease lock; results:
+$(cat "$RESULTS" 2>/dev/null)"
+  grep -Fqx 'exit_result=stopped-at-startup-gate' "$LAB/home/state/$id.control-relaunch" \
+    || fail "$id's relaunch did not stop the old agent through the startup-gate path"
+  wait_for_state "$SESSION:fm-$id" alive || fail "$id's relaunched agent is not running"
+  [ "$(cd "$(tmux display-message -p -t "$SESSION:fm-$id" '#{pane_current_path}')" && pwd -P)" = "$LAB/$id/wt" ] \
+    || fail "$id's relaunched agent is not running in its recorded worktree"
+done
+[ "$(grep -c . "$RESULTS")" = 3 ] || fail "the lease-guarded job should print one line per worker; results:
+$(cat "$RESULTS")"
+[ ! -e "$LAB/home/state/.wake-queue" ] || ! grep -q 'check: restored-workers' "$LAB/home/state/.wake-queue" \
+  || fail "a clean lease-guarded job raised a wake"
+pass "with the lease guard on, several gate-parked workers are all relaunched in their worktrees within the job's scaled bound"
 
 OUT=$(env -u FM_HOME "$RECOVER" 2>&1) && fail "the sweep must refuse without an explicit home: $OUT"
 pass "the sweep refuses without an explicit home"

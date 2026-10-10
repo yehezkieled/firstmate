@@ -39,8 +39,11 @@
 # gate, entering the recorded worktree, and launching the replacement there
 # with a progress note appended to the worker's instructions. A secondmate's
 # charter is never rewritten, so its note stays parent-side evidence.
-# Relaunches run concurrently, and each worker's line is published the moment
-# that worker is settled, never held back until the slowest one finishes.
+# Every worker is settled concurrently, but its relaunch may run one at a time
+# behind fm-control's home-wide lease command lock (on by default for a Claude
+# primary, bin/fm-lease-lib.sh fm_lease_guard), so one slow stop or launch can
+# delay the others. Each worker's line is published the moment that worker is
+# settled, never held back until the slowest one finishes.
 #
 # Every other state is left alone: `dead` and `missing` endpoints keep their own
 # recovery paths (the secondmate liveness sweep and stuck-crewmate recovery),
@@ -75,8 +78,9 @@
 # stage's aggregate deadline, and a deadline that killed it mid-transaction
 # would leave the worker with no agent, so the job runs outside that stage's
 # process group and deadline, under its own bound FM_RESTORED_RECOVER_TIMEOUT
-# (default 300s, sized for fm-control's TERM and KILL waits plus its launch
-# wait, all relaunches running concurrently). Each job writes its own results
+# (default max(300, 90 x recorded tasks) seconds: 90s covers one worker's
+# fm-control TERM and KILL waits plus its launch wait, scaled because relaunches
+# may run one at a time behind the command lock). Each job writes its own results
 # file, state/.restored-recover.results.<UTC timestamp>.<job pid>, line by line
 # as each worker is settled, appends a `RESTORED_WORKER: sweep:` line if its
 # bound expired, and enqueues one `check: restored-workers` wake naming that
@@ -122,8 +126,9 @@ RECHECK_DELAY=${FM_RESTORED_RECOVER_RECHECK:-1}
 SETTLE=${FM_RESTORED_RECOVER_SETTLE:-60}
 case "$SETTLE" in ''|*[!0-9]*) SETTLE=60 ;; esac
 SETTLE_POLL=${FM_RESTORED_RECOVER_SETTLE_POLL:-3}
-TIMEOUT=${FM_RESTORED_RECOVER_TIMEOUT:-300}
-case "$TIMEOUT" in ''|*[!0-9]*|0) TIMEOUT=300 ;; esac
+TIMEOUT=${FM_RESTORED_RECOVER_TIMEOUT:-}
+case "$TIMEOUT" in ''|*[!0-9]*|0) TIMEOUT= ;; esac
+TIMEOUT_PER_TASK=90
 SWEEP_LOCK="$STATE/.restored-recover.lock"
 RESULTS_PREFIX="$STATE/.restored-recover.results."
 RESULTS_KEEP=5
@@ -276,12 +281,12 @@ sweep() {
   wait
 }
 
-has_candidates() {
-  local meta
+candidate_count() {
+  local meta n=0
   for meta in "$STATE"/*.meta; do
-    [ -f "$meta" ] && [ ! -L "$meta" ] && return 0
+    [ -f "$meta" ] && [ ! -L "$meta" ] && n=$((n + 1))
   done
-  return 1
+  printf '%s' "$n"
 }
 
 case "$MODE" in
@@ -297,7 +302,7 @@ case "$MODE" in
     sweep
     ;;
   background)
-    has_candidates || exit 0
+    [ "$(candidate_count)" -gt 0 ] || exit 0
     # Its own process group (monitor mode), nohup, and no inherited stdio, for
     # the reasons bin/fm-startup-network.sh's own detach records: the caller
     # runs inside a bounded stage that terminates its whole process group, and
@@ -314,6 +319,10 @@ case "$MODE" in
     # shellcheck disable=SC2012
     ls -1t "$RESULTS_PREFIX"* 2>/dev/null | tail -n "+$((RESULTS_KEEP + 1))" \
       | while IFS= read -r old; do rm -f -- "$old"; done
+    if [ -z "$TIMEOUT" ]; then
+      TIMEOUT=$((TIMEOUT_PER_TASK * $(candidate_count)))
+      [ "$TIMEOUT" -ge 300 ] || TIMEOUT=300
+    fi
     rc=0
     fm_run_timed "$TIMEOUT" "$0" --sweep-held >> "$RESULTS" 2>/dev/null || rc=$?
     if fm_timed_out "$rc"; then
