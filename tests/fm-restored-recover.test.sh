@@ -22,6 +22,12 @@ pass() { printf 'ok - %s\n' "$1"; }
 
 command -v tmux >/dev/null 2>&1 || { echo "skip: tmux not found"; exit 0; }
 
+# Pin the lab's primary harness so the result does not depend on which harness
+# runs the suite: a detected Claude primary turns on the supervision host's
+# lease guard, whose home-wide command lock serializes concurrent fm-control
+# relaunches and makes the detached-job case's timing host-dependent.
+export FM_TEST_HARNESS=unknown
+
 REAL_TMUX=$(command -v tmux)
 SOCKET="fm-restored-$$"
 LAB=$(mktemp -d "${TMPDIR:-/tmp}/fm-restored.XXXXXX")
