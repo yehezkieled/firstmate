@@ -19,6 +19,9 @@
 # worktree is trusted through bin/fm-claude-trust.sh exactly as a spawn would
 # trust it, meets the external CLAUDE.md imports gate. Neither gate is answered,
 # and the guard asserts the store records no consent for either.
+# Cleanup stops the lab server and removes exactly the lab worktree and primary
+# checkout project entries from that store, including on failure; the cleanup
+# helper verifies both entries are absent while preserving unrelated entries.
 set -u
 
 # shellcheck source=tests/lib.sh
