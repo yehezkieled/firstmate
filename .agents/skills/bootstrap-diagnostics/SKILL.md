@@ -69,6 +69,7 @@ When any diagnostic needs captain attention, report the plain consequence and re
 - `SECONDMATE_LIVENESS: secondmate <id>: skipped: <reason>|respawn failed after <cause>: <reason>` - the session-start liveness sweep could not guarantee that the registered secondmate is running a real agent process.
   Investigate the reason because that secondmate is not guaranteed live.
 - `RESTORED_WORKER:` - after a restart a worker came back alive but parked on a harness startup gate or outside its recorded worktree, and `bin/fm-restored-recover.sh` could not put it back on its own.
+  A `primary:` finding names a startup gate the autonomous sweep left unanswered; preserve its session and permission mode, and request the operator-owned consent decision rather than treating it as a worker relaunch.
   The recovery runs as a detached job, so these lines arrive as a `check: restored-workers` wake naming that run's own results file, `state/.restored-recover.results.<timestamp>.<pid>`, which a later run never rewrites (only the newest five are kept); only a job that could not start prints its line in the digest itself.
   Treat each named worker as stopped or misplaced and load `stuck-crewmate-recovery`; never answer the startup gate on the operator's behalf, and never let the worker continue in a primary checkout.
   - `<id>: was <cause>; relaunch failed: <reason>` - resolve the named reason, then relaunch with `bin/fm-control.sh <id> relaunch`.

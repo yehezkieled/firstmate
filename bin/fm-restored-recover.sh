@@ -17,6 +17,12 @@
 # consent. Nothing about that state is visible as `dead` or `missing`, so the
 # ordinary dead-endpoint recovery never fires.
 #
+# A gate-parked primary is reported through the same results and wake path.
+# Its endpoint must be explicitly supplied or inherited from its pane, and its
+# harness cwd must equal this home. Recovery never grants new primary consent
+# or changes permissions: without a verified identical launch, it preserves the
+# primary session and reports the gate for an operator decision.
+#
 # WHAT. For every local direct report recorded in this home (ship, scout, or
 # secondmate) on a backend with a recovery-grade agent-state classifier (tmux,
 # herdr), whose agent reads `alive`, this sweep relaunches it through
@@ -72,9 +78,11 @@
 # in the foreground and prints each line as it is settled; an operator may run
 # it by hand from the lock-owning session, since each relaunch also takes
 # fm-control's per-task lock and a healthy worker is a no-op.
-# --background is how bin/fm-bootstrap.sh runs it from its deferred locked
-# network phase: it starts the sweep as its own detached job and returns at
-# once, printing nothing. A relaunch can legitimately outlast the deferred
+# --background is used by the watcher once per OS boot (including its first
+# observation), and by bin/fm-bootstrap.sh from its deferred locked
+# network phase: it starts the sweep as its own detached job and returns
+# after a short startup receipt (up to 5s), printing nothing on success.
+# A relaunch can legitimately outlast the deferred
 # stage's aggregate deadline, and a deadline that killed it mid-transaction
 # would leave the worker with no agent, so the job runs outside that stage's
 # process group and deadline, under its own bound FM_RESTORED_RECOVER_TIMEOUT
@@ -121,6 +129,14 @@ STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 . "$SCRIPT_DIR/fm-wake-lib.sh"
 # shellcheck source=bin/fm-timeout-lib.sh
 . "$SCRIPT_DIR/fm-timeout-lib.sh"
+
+# The explicit or inherited supervisor endpoint is the only primary candidate;
+# never use discovery's legacy name fallback or search other homes' panes.
+# shellcheck source=bin/fm-supervisor-target-lib.sh
+. "$SCRIPT_DIR/fm-supervisor-target-lib.sh"
+PRIMARY_TARGET=$(discover_supervisor_target) || PRIMARY_TARGET=
+PRIMARY_BACKEND=$(discover_supervisor_backend) || PRIMARY_BACKEND=
+case "$PRIMARY_BACKEND" in tmux|herdr) ;; *) PRIMARY_TARGET= ;; esac
 
 RECHECK_DELAY=${FM_RESTORED_RECOVER_RECHECK:-1}
 SETTLE=${FM_RESTORED_RECOVER_SETTLE:-60}
@@ -268,11 +284,35 @@ recover_one() {  # <meta> <id>
   fi
 }
 
+# A primary has no worker launch brief or permission snapshot. A recognized
+# gate is therefore unresolved even when a config entry records consent: its
+# live launch cannot be reconstructed with proven identical permissions.
+# Preserve the session, consent store, and process; publish the finding for
+# firstmate rather than answer a gate or change its launch permissions.
+recover_primary() {
+  local state cwd home screen gate
+  [ -n "$PRIMARY_TARGET" ] || return 0
+  home=$(real_dir "$FM_HOME") || return 0
+  cwd=$(agent_path "$PRIMARY_BACKEND" "$PRIMARY_TARGET") || return 0
+  cwd=$(real_dir "$cwd") || return 0
+  [ "$cwd" = "$home" ] || return 0
+  state=$(settled unreadable fm_backend_agent_state "$PRIMARY_BACKEND" "$PRIMARY_TARGET")
+  if [ "$state" = unreadable ]; then
+    echo "RESTORED_WORKER: primary: its endpoint stayed unreadable for ${SETTLE}s; not checked"
+    return 0
+  fi
+  [ "$state" = alive ] || return 0
+  screen=$(fm_backend_visible_capture "$PRIMARY_BACKEND" "$PRIMARY_TARGET" 2>/dev/null) || return 0
+  gate=$(fm_composer_startup_dialog "$screen") || return 0
+  echo "RESTORED_WORKER: primary: parked on the $gate at $PRIMARY_TARGET; no verified identical primary launch is recorded; session and permissions preserved, operator decision required"
+}
+
 # sweep: settle every recorded task concurrently. Each recover_one prints at
 # most one short line with a single write, so lines from concurrent workers
 # never interleave and each appears the moment its worker is settled.
 sweep() {
   local meta id
+  recover_primary 2>/dev/null &
   for meta in "$STATE"/*.meta; do
     [ -f "$meta" ] && [ ! -L "$meta" ] || continue
     id=$(basename "$meta" .meta)
@@ -283,6 +323,7 @@ sweep() {
 
 candidate_count() {
   local meta n=0
+  [ -z "$PRIMARY_TARGET" ] || n=1
   for meta in "$STATE"/*.meta; do
     [ -f "$meta" ] && [ ! -L "$meta" ] && n=$((n + 1))
   done
@@ -308,14 +349,36 @@ case "$MODE" in
     # runs inside a bounded stage that terminates its whole process group, and
     # a job holding the caller's stdout would hold the digest open.
     set -m 2>/dev/null || true
-    nohup "$0" --job >/dev/null 2>&1 </dev/null &
+    receipt_dir=$(mktemp -d "$STATE/.restored-recover.launch.XXXXXX") || exit 1
+    FM_RESTORED_RECOVER_LAUNCH_RECEIPT="$receipt_dir/started" \
+      nohup "$0" --job >/dev/null 2>&1 </dev/null &
+    job_pid=$!
+    launch_poll=0
+    while [ ! -s "$receipt_dir/started" ] && kill -0 "$job_pid" 2>/dev/null \
+      && [ "$launch_poll" -lt 50 ]; do
+      sleep 0.1
+      launch_poll=$((launch_poll + 1))
+    done
+    launched=0
+    [ ! -s "$receipt_dir/started" ] || launched=1
+    rm -rf -- "$receipt_dir"
+    [ "$launched" -eq 1 ] || {
+      echo "error: restored-worker background job did not confirm startup" >&2
+      exit 1
+    }
     exit 0
     ;;
   job)
-    fm_lock_try_acquire "$SWEEP_LOCK" || exit 0
+    fm_lock_try_acquire "$SWEEP_LOCK" || {
+      [ -z "${FM_RESTORED_RECOVER_LAUNCH_RECEIPT:-}" ] \
+        || printf '%s\n' already-running > "$FM_RESTORED_RECOVER_LAUNCH_RECEIPT"
+      exit 0
+    }
     trap 'fm_lock_release "$SWEEP_LOCK" 2>/dev/null || true' EXIT
     RESULTS="$RESULTS_PREFIX$(date -u +%Y%m%dT%H%M%SZ).$$"
     : > "$RESULTS" || exit 1
+    [ -z "${FM_RESTORED_RECOVER_LAUNCH_RECEIPT:-}" ] \
+      || printf '%s\n' started > "$FM_RESTORED_RECOVER_LAUNCH_RECEIPT"
     # shellcheck disable=SC2012
     ls -1t "$RESULTS_PREFIX"* 2>/dev/null | tail -n "+$((RESULTS_KEEP + 1))" \
       | while IFS= read -r old; do rm -f -- "$old"; done
@@ -325,6 +388,9 @@ case "$MODE" in
     fi
     rc=0
     fm_run_timed "$TIMEOUT" "$0" --sweep-held >> "$RESULTS" 2>/dev/null || rc=$?
+    if [ "$rc" -ne 0 ] && ! fm_timed_out "$rc"; then
+      echo "RESTORED_WORKER: sweep: failed with exit $rc; workers without a result were not confirmed recovered" >> "$RESULTS"
+    fi
     if fm_timed_out "$rc"; then
       echo "RESTORED_WORKER: sweep: stopped by its ${TIMEOUT}s bound (FM_RESTORED_RECOVER_TIMEOUT); a worker with no line above was not confirmed recovered" >> "$RESULTS"
     fi
