@@ -437,7 +437,7 @@ test_agy_trust_refuses_out_of_scope_paths() {
 # Treehouse shares one pool among every clone of an origin, so a secondmate
 # home's spawn can be handed a slot that is a worktree of another home's clone.
 test_agy_trust_pooled_same_origin_clone_is_trusted_and_others_refused() {
-  local rec store out rc second pooled other pooled_other nopool
+  local rec store out rc second pooled other pooled_other
   rec=$(make_agy_trust_case pool)
   read_agy_trust_case "$rec"
   store="$HOME_DIR/.gemini/antigravity-cli/settings.json"
