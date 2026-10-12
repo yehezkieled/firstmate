@@ -274,7 +274,7 @@ recover_one() {  # <meta> <id>
     return 0
   fi
   rc=0
-  out=$(FM_SPAWN_NO_GUARD=1 "$SCRIPT_DIR/fm-control.sh" "$id" relaunch \
+  out=$(FM_SPAWN_NO_GUARD=1 "$SCRIPT_DIR/fm-control.sh" "$id" relaunch --idle-only \
     --note "$(relaunch_note "$cause" "$wt")" 2>&1) || rc=$?
   if [ "$rc" -eq 0 ]; then
     echo "BOOTSTRAP_INFO: worker $id was $cause; relaunched in its recorded worktree $wt"

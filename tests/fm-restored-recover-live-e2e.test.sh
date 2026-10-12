@@ -13,15 +13,9 @@
 # what notices a release that redraws it.
 #
 # Claude is launched bare in a disposable project and never receives a prompt,
-# so this consumes no model tokens. It uses the launching user's own Claude
-# configuration because the gates appear only before a session can start: the
-# first launch meets the folder-trust gate; the second, after the lab's task
-# worktree is trusted through bin/fm-claude-trust.sh exactly as a spawn would
-# trust it, meets the external CLAUDE.md imports gate. Neither gate is answered,
-# and the guard asserts the store records no consent for either.
-# Cleanup stops the lab server and removes exactly the lab worktree and primary
-# checkout project entries from that store, including on failure; the cleanup
-# helper verifies both entries are absent while preserving unrelated entries.
+# so this consumes no model tokens. Both launches and trust registration use
+# a disposable copy of the launching user's onboarded Claude configuration.
+# Neither gate is answered, and the guard asserts no consent is recorded.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -39,19 +33,33 @@ SOCKET="fm-restored-live-$$"
 LAB=$(mktemp -d "${TMPDIR:-/tmp}/fm-restored-live.XXXXXX")
 LAB=$(cd "$LAB" && pwd -P)
 SESSION=gates
-STORE="${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json"
+SOURCE_CONFIG=${CLAUDE_CONFIG_DIR:-$HOME}
+export CLAUDE_CONFIG_DIR="$LAB/claude-config"
+STORE="$CLAUDE_CONFIG_DIR/.claude.json"
 
 cleanup_all() {
   local result=$?
   "$REAL_TMUX" -L "$SOCKET" kill-server >/dev/null 2>&1 || true
-  node "$ROOT/tests/claude-lab-trust-cleanup.cjs" "$STORE" "$LAB/wt" "$LAB/proj" || result=1
   [ -n "${LAB:-}" ] && fm_test_remove_tree "$LAB"
   fm_test_cleanup
   exit "$result"
 }
 trap cleanup_all EXIT
 
-mkdir -p "$LAB/shim" "$LAB/home/state" "$LAB/home/data"
+mkdir -p "$LAB/shim" "$LAB/home/state" "$LAB/home/data" "$CLAUDE_CONFIG_DIR"
+node - "$SOURCE_CONFIG" "$CLAUDE_CONFIG_DIR" <<'NODE' || fail "could not isolate Claude configuration"
+const fs = require('node:fs');
+const path = require('node:path');
+const [source, target] = process.argv.slice(2);
+const config = JSON.parse(fs.readFileSync(path.join(source, '.claude.json'), 'utf8'));
+config.projects = {};
+fs.writeFileSync(path.join(target, '.claude.json'), JSON.stringify(config), { mode: 0o600 });
+const credentials = path.join(source, '.credentials.json');
+if (fs.existsSync(credentials)) {
+  fs.copyFileSync(credentials, path.join(target, '.credentials.json'));
+  fs.chmodSync(path.join(target, '.credentials.json'), 0o600);
+}
+NODE
 cat > "$LAB/shim/tmux" <<SH
 #!/usr/bin/env bash
 exec "$REAL_TMUX" -u -L "$SOCKET" "\$@"

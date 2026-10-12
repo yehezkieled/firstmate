@@ -304,6 +304,22 @@ esac
 tmux kill-window -t "$SESSION:fm-busy"
 pass "an agent in its worktree that runs a command in another directory is not flagged or relaunched"
 
+for verdict in busy unknown; do
+  new_task "late-$verdict" wt "$LAB/composer.txt"
+  gen=$("$ROOT/bin/fm-busy-event.sh" arm "$LAB/home/state" "late-$verdict" --state "$verdict") \
+    || fail "could not arm $verdict state"
+  printf 'busy_gen=%s\n' "$gen" >> "$LAB/home/state/late-$verdict.meta"
+  if OUT=$(run_control "late-$verdict" relaunch --idle-only --note recovery); then
+    fail "autonomous recovery stopped a $verdict worker: $OUT"
+  fi
+  case "$OUT" in *"not idle; refusing autonomous recovery"*) ;; *) fail "unexpected refusal: $OUT" ;; esac
+  [ "$(fm_backend_agent_state tmux "$SESSION:fm-late-$verdict")" = alive ] \
+    || fail "autonomous recovery stopped the $verdict worker"
+  tmux kill-window -t "$SESSION:fm-late-$verdict"
+  rm -f "$LAB/home/state/late-$verdict.meta"
+done
+pass "autonomous relaunch refuses busy and unknown workers at the stop boundary"
+
 # --- fm-control exit on a gate-parked agent ------------------------------
 #
 # The composer reads the gate as text the operator has not submitted, which is

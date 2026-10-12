@@ -4,7 +4,7 @@
 #
 # Usage: fm-control.sh <task-id> interrupt
 #        fm-control.sh <task-id> exit
-#        fm-control.sh <task-id> relaunch [--harness <name>] [--model <name>]
+#        fm-control.sh <task-id> relaunch [--idle-only] [--harness <name>] [--model <name>]
 #                                         [--effort <level>]
 #                                         (--note <text> | --note-file <path>)
 #
@@ -69,6 +69,8 @@
 #              answer. Reclaim is HERDR-ONLY for the reason `exit` gives above:
 #              a tmux `missing` cannot be proven absent from a task record, so
 #              it refuses.
+#              --idle-only refuses to stop a live agent unless it is parked
+#              on a startup gate or positively reads idle under lifecycle locks.
 #              An explicit `default` model or effort clears that
 #              axis for the replacement. With no explicit axis, a secondmate
 #              re-resolves its durable config/secondmate-harness pin (harness
@@ -255,6 +257,7 @@ MODEL_SET=0
 EFFORT_SET=0
 NOTE=
 NOTE_SET=0
+IDLE_ONLY=0
 control_want_value=
 for control_arg in "$@"; do
   if [ -n "$control_want_value" ]; then
@@ -276,6 +279,7 @@ for control_arg in "$@"; do
     continue
   fi
   case "$control_arg" in
+    --idle-only) IDLE_ONLY=1 ;;
     --harness) control_want_value=harness ;;
     --harness=*) NEW_HARNESS=${control_arg#--harness=}; HARNESS_SET=1 ;;
     --model) control_want_value=model ;;
@@ -299,8 +303,8 @@ if [ -n "$control_want_value" ]; then
 fi
 
 if [ "$VERB" != relaunch ]; then
-  [ "$HARNESS_SET" = 0 ] && [ "$MODEL_SET" = 0 ] && [ "$EFFORT_SET" = 0 ] && [ "$NOTE_SET" = 0 ] \
-    || die "--harness, --model, --effort, and --note apply to 'relaunch' only"
+  [ "$HARNESS_SET" = 0 ] && [ "$MODEL_SET" = 0 ] && [ "$EFFORT_SET" = 0 ] && [ "$NOTE_SET" = 0 ] && [ "$IDLE_ONLY" = 0 ] \
+    || die "--harness, --model, --effort, --note, and --idle-only apply to 'relaunch' only"
 fi
 [ "$HARNESS_SET" = 0 ] || [ -n "$NEW_HARNESS" ] || die "--harness requires a non-empty value"
 [ "$MODEL_SET" = 0 ] || [ -n "$NEW_MODEL" ] || die "--model requires a non-empty value"
@@ -741,7 +745,11 @@ do_exit() {
     return $?
   fi
   # A busy agent is interrupted first before the exit command is submitted.
-  case "$(busy_verdict)" in
+  verdict=$(busy_verdict)
+  if [ "$IDLE_ONLY" = 1 ] && [ "${verdict%% *}" != idle ]; then
+    die "task $ID now reads $verdict, not idle; refusing autonomous recovery"
+  fi
+  case "$verdict" in
     busy*)
       cancel=$(deliver_interrupt) || return $?
       state=$(agent_state)
