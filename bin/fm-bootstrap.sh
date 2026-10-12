@@ -777,6 +777,9 @@ secondmate_liveness_one() {  # <meta> <id>
 }
 
 secondmate_handoff_resume() {
+  if [ -d "$STATE/ticket-requests" ]; then
+    "$SCRIPT_DIR/fm-ticket.sh" resume-pending >/dev/null 2>&1 || true
+  fi
   [ -d "$DATA/handoff" ] || return 0
   "$SCRIPT_DIR/fm-backlog-handoff.sh" --resume-pending >/dev/null 2>&1 || true
 }
