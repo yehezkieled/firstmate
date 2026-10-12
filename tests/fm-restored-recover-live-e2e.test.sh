@@ -24,7 +24,7 @@ set -u
 # shellcheck source=tests/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-fm_live_gate default-on FM_RESTORED_RECOVER_LIVE claude tmux jq
+fm_live_gate default-on FM_RESTORED_RECOVER_LIVE claude tmux jq node
 
 fail() { printf 'not ok - %s [claude %s]\n' "$1" "${CLAUDE_VERSION:-unknown}" >&2; exit 1; }
 pass() { printf 'ok - %s\n' "$1"; }
@@ -39,9 +39,12 @@ SESSION=gates
 STORE="${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json"
 
 cleanup_all() {
+  local result=$?
   "$REAL_TMUX" -L "$SOCKET" kill-server >/dev/null 2>&1 || true
+  node "$ROOT/tests/claude-lab-trust-cleanup.cjs" "$STORE" "$LAB/wt" "$LAB/proj" || result=1
   [ -n "${LAB:-}" ] && fm_test_remove_tree "$LAB"
   fm_test_cleanup
+  exit "$result"
 }
 trap cleanup_all EXIT
 
