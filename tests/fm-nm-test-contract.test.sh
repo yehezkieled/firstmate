@@ -8,15 +8,16 @@ set -u
 NM="$ROOT/.no-mistakes.yaml"
 
 test_nm_has_no_deterministic_test_command() {
-  command -v ruby >/dev/null 2>&1 \
-    || fail "ruby is required to parse .no-mistakes.yaml for this contract"
   local val
-  val=$(ruby -ryaml -e '
-doc = YAML.load_file(ARGV[0]) || {}
-cmds = doc["commands"] || {}
-val = cmds.is_a?(Hash) ? cmds["test"] : nil
-puts (val.nil? || val == false || val == "") ? "" : val.inspect
-' "$NM") || fail "failed to parse .no-mistakes.yaml as YAML"
+  val=$(python3 - "$NM" <<'PYTHON'
+import sys, yaml
+with open(sys.argv[1]) as source:
+    doc = yaml.safe_load(source) or {}
+commands = doc.get("commands") or {}
+value = commands.get("test") if isinstance(commands, dict) else None
+print("" if value is None or value is False or value == "" else repr(value))
+PYTHON
+) || fail "failed to parse .no-mistakes.yaml as YAML (PyYAML required)"
   if [ -n "$val" ]; then
     fail "commands.test must be absent or empty so Test stays intent-targeted; got: $val"
   fi

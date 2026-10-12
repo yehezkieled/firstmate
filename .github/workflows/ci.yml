@@ -115,6 +115,12 @@ jobs:
           echo "TMUX_TMPDIR=$RUNNER_TEMP/tmux" >> "$GITHUB_ENV"
           echo "npm_config_prefix=$RUNNER_TEMP/npm" >> "$GITHUB_ENV"
           echo "$RUNNER_TEMP/npm/bin" >> "$GITHUB_PATH"
+      - name: Install YAML parser for workflow contract tests
+        run: |
+          set -eu
+          curl -fsSL https://bootstrap.pypa.io/pip/pip.pyz -o "$RUNNER_TEMP/pip.pyz"
+          python3 "$RUNNER_TEMP/pip.pyz" install --target "$RUNNER_TEMP/python" PyYAML==6.0.3
+          echo "PYTHONPATH=$RUNNER_TEMP/python" >> "$GITHUB_ENV"
       - name: Install tasks-axi
         run: |
           set -eu
@@ -173,6 +179,12 @@ jobs:
           echo "TMUX_TMPDIR=$RUNNER_TEMP/tmux" >> "$GITHUB_ENV"
           echo "npm_config_prefix=$RUNNER_TEMP/npm" >> "$GITHUB_ENV"
           echo "$RUNNER_TEMP/npm/bin" >> "$GITHUB_PATH"
+      - name: Install YAML parser for workflow contract tests
+        run: |
+          set -eu
+          curl -fsSL https://bootstrap.pypa.io/pip/pip.pyz -o "$RUNNER_TEMP/pip.pyz"
+          python3 "$RUNNER_TEMP/pip.pyz" install --target "$RUNNER_TEMP/python" PyYAML==6.0.3
+          echo "PYTHONPATH=$RUNNER_TEMP/python" >> "$GITHUB_ENV"
       - name: Install tasks-axi
         run: |
           set -eu
@@ -239,6 +251,12 @@ jobs:
           echo "TMUX_TMPDIR=$RUNNER_TEMP/tmux" >> "$GITHUB_ENV"
           echo "npm_config_prefix=$RUNNER_TEMP/npm" >> "$GITHUB_ENV"
           echo "$RUNNER_TEMP/npm/bin" >> "$GITHUB_PATH"
+      - name: Install YAML parser for workflow contract tests
+        run: |
+          set -eu
+          curl -fsSL https://bootstrap.pypa.io/pip/pip.pyz -o "$RUNNER_TEMP/pip.pyz"
+          python3 "$RUNNER_TEMP/pip.pyz" install --target "$RUNNER_TEMP/python" PyYAML==6.0.3
+          echo "PYTHONPATH=$RUNNER_TEMP/python" >> "$GITHUB_ENV"
       - name: Install tasks-axi for backlog-handoff delegation
         run: |
           set -eu
@@ -300,13 +318,16 @@ jobs:
         if: runner.environment == 'self-hosted'
         run: |
           set -eu
-          mkdir -p "$RUNNER_TEMP/tmux" "$RUNNER_TEMP/herdr-config" "$RUNNER_TEMP/herdr-state"
+          # Named-session socket paths must fit Linux sun_path (108 bytes).
+          herdr_root=$(mktemp -d /tmp/fm-ci.XXXXXX)
+          mkdir -p "$RUNNER_TEMP/tmux" "$herdr_root/config" "$herdr_root/state"
           {
             echo "TMUX_TMPDIR=$RUNNER_TEMP/tmux"
             echo "npm_config_prefix=$RUNNER_TEMP/npm"
-            echo "XDG_CONFIG_HOME=$RUNNER_TEMP/herdr-config"
-            echo "XDG_STATE_HOME=$RUNNER_TEMP/herdr-state"
-            echo "FM_HERDR_LAB_STATE_DIR=$RUNNER_TEMP/herdr-lab"
+            echo "FM_CI_HERDR_ROOT=$herdr_root"
+            echo "XDG_CONFIG_HOME=$herdr_root/config"
+            echo "XDG_STATE_HOME=$herdr_root/state"
+            echo "FM_HERDR_LAB_STATE_DIR=$herdr_root/lab"
           } >> "$GITHUB_ENV"
           {
             echo "$RUNNER_TEMP/npm/bin"
@@ -417,6 +438,9 @@ jobs:
           set -eu
           if [ -f "$RUNNER_TEMP/fm-herdr/default-server.pid" ]; then
             kill "$(cat "$RUNNER_TEMP/fm-herdr/default-server.pid")" 2>/dev/null || true
+          fi
+          if [ -n "${FM_CI_HERDR_ROOT:-}" ]; then
+            rm -rf "$FM_CI_HERDR_ROOT"
           fi
       - name: Upload Herdr timing and diagnostics
         if: always()
