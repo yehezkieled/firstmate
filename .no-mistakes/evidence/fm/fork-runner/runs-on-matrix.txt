@@ -1,0 +1,17 @@
+ci.yml lint runs-on= <expr> if= None
+ci.yml test-coverage runs-on= <expr> if= None
+ci.yml tests-portable-parallel-1 runs-on= <expr> if= None
+ci.yml tests-portable-parallel-2 runs-on= <expr> if= None
+ci.yml tests-portable-serial runs-on= <expr> if= None
+ci.yml tests-herdr runs-on= ubuntu-latest if= github.repository == 'kunchenguid/firstmate'
+ci.yml tests-timing-aggregate runs-on= <expr> if= always()
+ci.yml macos-stock-bash runs-on= macos-latest if= github.repository == 'kunchenguid/firstmate'
+ci.yml invariants runs-on= <expr> if= None
+no-mistakes-required.yml check runs-on= <expr> if= github.event.pull_request.user.login != 'github-actions[bot]' && github.event.pull_request.user.login != 'dependabot[bot]'
+distinct runs-on expressions: 1
+('yehezkieled/firstmate', 'push', None) -> ['self-hosted', 'hezki-pc']
+('yehezkieled/firstmate', 'pull_request', 'yehezkieled/firstmate') -> ['self-hosted', 'hezki-pc']
+('yehezkieled/firstmate', 'pull_request', 'stranger/firstmate') -> ubuntu-latest
+('kunchenguid/firstmate', 'push', None) -> ubuntu-latest
+('kunchenguid/firstmate', 'pull_request', 'kunchenguid/firstmate') -> ubuntu-latest
+('kunchenguid/firstmate', 'pull_request', 'someone/firstmate') -> ubuntu-latest
