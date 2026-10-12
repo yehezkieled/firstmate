@@ -18,6 +18,7 @@ printf '%s\n' "$FM_HOME" >> "$FM_HOME/launches"
 SH
 chmod +x "$SCRIPT_DIR/fm-restored-recover.sh"
 # Control only the OS identity; exercise production launch and publication.
+# shellcheck disable=SC2329 # Called by sourced watcher_restart_recovery.
 watcher_boot_identity() { printf '%s' "$BOOT"; }
 BOOT=aaaa-bbbb
 watcher_restart_recovery || fail "first observation failed"
@@ -41,6 +42,7 @@ watcher_restart_recovery || fail "retry failed"
 [ "$(wc -l < "$FM_HOME/launches" | tr -d ' ')" = 3 ] || fail "retry did not launch"
 pass "first observation and each boot recover once across cycles and rearming; failed launches retry"
 # Missing OS identity must never masquerade as a new boot.
+# shellcheck disable=SC2329 # Called by sourced watcher_restart_recovery.
 watcher_boot_identity() { return 1; }
 if watcher_restart_recovery 2> "$LAB/error"; then fail "missing identity accepted"; fi
 [ "$(wc -l < "$FM_HOME/launches" | tr -d ' ')" = 3 ] || fail "identity failure launched recovery"

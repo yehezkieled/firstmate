@@ -44,7 +44,7 @@ start_out=$("$HERDR_LAB_HELPER" run "$HERDR_LAB_SESSION" agent start restart-pri
   printf '%s\n' "$start_out"
   printf '%s' "$start_out" | grep -q agent_not_ready || exit 1
 }
-for i in $(seq 1 100); do
+for _ in $(seq 1 100); do
   screen=$("$HERDR_LAB_HELPER" run "$HERDR_LAB_SESSION" pane read "$pane" --format text 2>/dev/null) || screen=
   if printf '%s' "$screen" | grep -Eq 'Accessing workspace:|Allow external CLAUDE.md file imports\?|Teach auto mode about your environment\?'; then break; fi
   sleep 0.2
@@ -55,7 +55,7 @@ PID_BEFORE=$(PATH="$LAB/bin:$PATH" bash -c '. "$1/bin/fm-backend.sh"; fm_backend
 PATH="$LAB/bin:$PATH" FM_HOME="$LAB/home" FM_SUPERVISOR_BACKEND=herdr \
  FM_SUPERVISOR_TARGET="$HERDR_LAB_SESSION:$pane" FM_RESTORED_RECOVER_SETTLE=2 \
  "$ROOT/bin/fm-restored-recover.sh" --background
-for i in $(seq 1 100); do
+for _ in $(seq 1 100); do
   if grep -q 'RESTORED_WORKER: primary: parked on' "$LAB/home/state/".restored-recover.results.* 2>/dev/null; then break; fi
   sleep 0.2
 done
