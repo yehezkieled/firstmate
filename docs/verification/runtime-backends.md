@@ -1807,7 +1807,7 @@ In the lab, a Claude started in the worktree under a nested shell came back afte
 ```
 
 The resumed agent reads `alive` to the recovery-grade classifier, so no dead-endpoint recovery fires, and with an external `CLAUDE.md` import in the primary checkout it sits on the imports gate recorded in "Claude startup gates".
-[`bin/fm-restored-recover.sh`](../../bin/fm-restored-recover.sh) finds that state at session start and relaunches the worker through `bin/fm-control.sh relaunch`, whose Herdr path moves the top shell back into the worktree.
+The current recovery triggers and operator behavior are documented in [Agents resumed after a restart](../herdr-backend.md#agents-resumed-after-a-restart).
 Observed in the same lab, for a gate-parked worker and for one that was only in the wrong directory:
 
 ```text

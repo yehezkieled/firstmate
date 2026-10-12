@@ -681,7 +681,7 @@ A pane whose agent had reported its session comes back with that session resumed
 That directory is the pane's top shell's, and a worker pane's top shell sits in the project's primary checkout because `treehouse get` enters the task worktree in a nested shell ([verification](verification/runtime-backends.md) "Herdr restart resumes agents in the top shell's directory").
 So a resumed worker is alive but outside its worktree, and it may be parked on a startup gate such as Claude's external `CLAUDE.md` imports question.
 The watcher invokes [`bin/fm-restored-recover.sh`](../bin/fm-restored-recover.sh) in the background once per operating-system boot, including its first observation, without waiting for a primary model turn; session start remains another trigger.
-The sweep relaunches local recorded workers on recognized startup gates, or Herdr workers whose harness directory is confirmed outside their recorded worktree and whose agent reads idle; busy or unsettled drift is reported for investigation.
+The [recovery script header](../bin/fm-restored-recover.sh) owns worker eligibility, idle-state safeguards, bounds, and failure reporting.
 The relaunch preserves the work there and tells the replacement what happened; it also moves the top shell, so the next restart resumes in the worktree.
 A primary parked on a startup gate produces a durable finding through the same results and wake path when its explicitly supplied or inherited supervisor endpoint runs in this home.
 There is no verified primary launch snapshot to replay with identical permissions, so the sweep preserves that primary session and requests an operator decision rather than grant consent or change permissions.

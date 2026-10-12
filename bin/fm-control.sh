@@ -71,6 +71,9 @@
 #              it refuses.
 #              --idle-only refuses to stop a live agent unless it is parked
 #              on a startup gate or positively reads idle under lifecycle locks.
+#              Outside a gate, Herdr requires both semantic idle and a fresh
+#              native idle verdict there; stale hook evidence cannot authorize
+#              stopping a busy or unknown restored agent.
 #              An explicit `default` model or effort clears that
 #              axis for the replacement. With no explicit axis, a secondmate
 #              re-resolves its durable config/secondmate-harness pin (harness

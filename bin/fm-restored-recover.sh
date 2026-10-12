@@ -40,6 +40,8 @@
 # reads the agent idle, so a working turn is never interrupted: a verdict that
 # reads unknown is re-read like an unreadable endpoint below, and one that never
 # settles idle is reported rather than relaunched.
+# fm-control's --idle-only stop boundary rechecks eligibility under lifecycle
+# locks; its header owns the final idle safeguards.
 # The relaunch owns everything else: the checkpoint that proves the worktree and
 # its unlanded work are intact, stopping the old agent without answering any
 # gate, entering the recorded worktree, and launching the replacement there
