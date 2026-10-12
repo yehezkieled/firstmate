@@ -449,15 +449,17 @@ while [ "$attempt" -lt "$AUTOARM_ATTEMPTS" ]; do
     # A host that died without a close may have left its cycle running with
     # no owner to deliver the close; retrying lets the next host stop what it
     # left and own a fresh cycle, which the healthy-watcher predicate cannot.
+    # Explicit failures, including an empty failed hand-back, must notify main
+    # before an empty-output retry can wait on the surviving successor.
+    if [ "$HOST_RC" -ne 0 ] && [ "$HOST_RC" -le 128 ]; then
+      break
+    fi
     if [ "$HOST_RC" -gt 128 ] || [ -z "$OUT" ] || [ ! -s "$OUT" ]; then
       [ "$attempt" -lt "$AUTOARM_ATTEMPTS" ] || break
       [ -z "$OUT" ] || rm -f "$OUT" 2>/dev/null || true
       OUT=
       continue
     fi
-    # A failed hand-back cannot be dismissed just because its successor
-    # watcher is healthy: the close is still undelivered.
-    [ "$HOST_RC" -eq 0 ] || break
   fi
 
   # A non-actionable close is benign when another verified watcher already owns
