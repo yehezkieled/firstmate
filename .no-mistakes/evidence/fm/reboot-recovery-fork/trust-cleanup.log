@@ -1,0 +1,1 @@
+ok - cleanup removes both lab entries on success and failure, preserves unrelated state and symlinks, and refuses malformed stores
