@@ -29,7 +29,7 @@ concurrency:
 jobs:
   lint:
     name: Lint ${{ matrix.partition }}
-    runs-on: ${{ github.repository != 'kunchenguid/firstmate' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted", "hezki-pc"]') || 'ubuntu-latest' }}
+    runs-on: ${{ github.repository == 'yehezkieled/firstmate' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted", "hezki-pc"]') || 'ubuntu-latest' }}
     # Normal tier (see the timeout policy above).
     timeout-minutes: 30
     strategy:
@@ -78,7 +78,7 @@ jobs:
   # and that the portable serial CI shards partition that serial lane exactly.
   test-coverage:
     name: Test coverage guard
-    runs-on: ${{ github.repository != 'kunchenguid/firstmate' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted", "hezki-pc"]') || 'ubuntu-latest' }}
+    runs-on: ${{ github.repository == 'yehezkieled/firstmate' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted", "hezki-pc"]') || 'ubuntu-latest' }}
     # Fast tier: the coverage guard is a seconds-long local computation.
     timeout-minutes: 5
     steps:
@@ -90,7 +90,7 @@ jobs:
   # set only. Composition owner: bin/fm-test-run.sh (docs/fm-test-portable-shards.md).
   tests-portable-parallel-1:
     name: Behavior portable parallel 1
-    runs-on: ${{ github.repository != 'kunchenguid/firstmate' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted", "hezki-pc"]') || 'ubuntu-latest' }}
+    runs-on: ${{ github.repository == 'yehezkieled/firstmate' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted", "hezki-pc"]') || 'ubuntu-latest' }}
     # Normal tier (see the timeout policy above).
     timeout-minutes: 30
     steps:
@@ -148,7 +148,7 @@ jobs:
 
   tests-portable-parallel-2:
     name: Behavior portable parallel 2
-    runs-on: ${{ github.repository != 'kunchenguid/firstmate' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted", "hezki-pc"]') || 'ubuntu-latest' }}
+    runs-on: ${{ github.repository == 'yehezkieled/firstmate' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted", "hezki-pc"]') || 'ubuntu-latest' }}
     # Normal tier (see the timeout policy above).
     timeout-minutes: 30
     steps:
@@ -201,7 +201,7 @@ jobs:
   # whose "ofN" disagrees with it (docs/fm-test-portable-shards.md).
   tests-portable-serial:
     name: Behavior portable serial ${{ matrix.shard }}
-    runs-on: ${{ github.repository != 'kunchenguid/firstmate' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted", "hezki-pc"]') || 'ubuntu-latest' }}
+    runs-on: ${{ github.repository == 'yehezkieled/firstmate' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted", "hezki-pc"]') || 'ubuntu-latest' }}
     # Normal tier (see the timeout policy above).
     timeout-minutes: 30
     strategy:
@@ -287,9 +287,7 @@ jobs:
   # the failure evidence and move the job to macOS rather than skip assertions.
   tests-herdr:
     name: Behavior tests (Herdr)
-    runs-on: ubuntu-latest
-    # The fork's shared self-hosted runners cannot host an isolated Herdr server.
-    if: github.repository == 'kunchenguid/firstmate'
+    runs-on: ${{ github.repository == 'yehezkieled/firstmate' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted", "hezki-pc"]') || 'ubuntu-latest' }}
     # Heavy tier (see the timeout policy above): the last-resort job backstop.
     # The family-run step below owns the hang tripwire, so a wedged suite fails
     # there with the always() cleanup and timing upload still running.
@@ -298,6 +296,23 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+      - name: Isolate self-hosted Herdr job state
+        if: runner.environment == 'self-hosted'
+        run: |
+          set -eu
+          mkdir -p "$RUNNER_TEMP/tmux" "$RUNNER_TEMP/herdr-config" "$RUNNER_TEMP/herdr-state"
+          {
+            echo "TMUX_TMPDIR=$RUNNER_TEMP/tmux"
+            echo "npm_config_prefix=$RUNNER_TEMP/npm"
+            echo "XDG_CONFIG_HOME=$RUNNER_TEMP/herdr-config"
+            echo "XDG_STATE_HOME=$RUNNER_TEMP/herdr-state"
+            echo "FM_HERDR_LAB_STATE_DIR=$RUNNER_TEMP/herdr-lab"
+          } >> "$GITHUB_ENV"
+          {
+            echo "$RUNNER_TEMP/npm/bin"
+            echo "/opt/ghrunner-node/bin"
+          } >> "$GITHUB_PATH"
+          command -v tmux >/dev/null || { echo "::error::tmux is required"; exit 1; }
       - name: Require tools for real Herdr
         run: |
           set -eu
@@ -396,6 +411,13 @@ jobs:
             herdr session list --json || true
             exit 1
           }
+      - name: Stop job-owned default Herdr server
+        if: always() && runner.environment == 'self-hosted'
+        run: |
+          set -eu
+          if [ -f "$RUNNER_TEMP/fm-herdr/default-server.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/fm-herdr/default-server.pid")" 2>/dev/null || true
+          fi
       - name: Upload Herdr timing and diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -410,7 +432,7 @@ jobs:
   # Aggregate per-lane timing into one summary artifact for critical-path review.
   tests-timing-aggregate:
     name: Behavior timing aggregate
-    runs-on: ${{ github.repository != 'kunchenguid/firstmate' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted", "hezki-pc"]') || 'ubuntu-latest' }}
+    runs-on: ${{ github.repository == 'yehezkieled/firstmate' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted", "hezki-pc"]') || 'ubuntu-latest' }}
     # Fast tier: aggregation is seconds of work over lane artifacts.
     timeout-minutes: 5
     needs:
@@ -452,7 +474,7 @@ jobs:
     name: Stock macOS Bash snapshot compatibility
     runs-on: macos-latest
     # The fork's self-hosted Linux runners cannot run macOS jobs.
-    if: github.repository == 'kunchenguid/firstmate'
+    if: github.repository != 'yehezkieled/firstmate'
     # Normal tier (see the timeout policy above).
     timeout-minutes: 30
     steps:
@@ -546,7 +568,7 @@ jobs:
 
   invariants:
     name: Repo invariants
-    runs-on: ${{ github.repository != 'kunchenguid/firstmate' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted", "hezki-pc"]') || 'ubuntu-latest' }}
+    runs-on: ${{ github.repository == 'yehezkieled/firstmate' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted", "hezki-pc"]') || 'ubuntu-latest' }}
     # Fast tier: the invariant checks are seconds-long file comparisons.
     timeout-minutes: 5
     steps:
