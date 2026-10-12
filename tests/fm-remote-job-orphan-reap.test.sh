@@ -51,11 +51,23 @@ wait_gone() { # <pid> <seconds>
   ! alive "$pid"
 }
 
-# Wait up to <seconds> for <pid> to have a live child; 0 when it does.
-wait_child() { # <pid> <seconds>
-  local pid=$1 deadline=$(( $(date +%s) + $2 ))
+# Select the serving process, never a transient startup command substitution.
+serving_child() { # <pid> <remote-root>
+  local pid command
+  for pid in $(pgrep -P "$1" 2>/dev/null); do
+    command=$(ps -p "$pid" -o command= 2>/dev/null) || continue
+    [ "$command" = "/bin/bash $2/bin/fm-remote-job-worker.sh --serve" ] || continue
+    printf '%s\n' "$pid"
+    return 0
+  done
+  return 1
+}
+
+# Wait up to <seconds> for the supervisor to start its serving process.
+wait_child() { # <pid> <seconds> <remote-root>
+  local pid=$1 deadline=$(( $(date +%s) + $2 )) root=$3
   while [ "$(date +%s)" -lt "$deadline" ]; do
-    [ -n "$(pgrep -P "$pid" 2>/dev/null || true)" ] && return 0
+    [ -n "$(serving_child "$pid" "$root" 2>/dev/null || true)" ] && return 0
     sleep 0.1
   done
   return 1
@@ -139,8 +151,8 @@ build_remote_root "$CASE1/remote-root"
 WORKER=$(start_worker "$CASE1/remote-root" "$CASE1/account" "$CASE1/remote-jobs") ||
   fail "could not start the fixture remote job worker"
 track "$WORKER"
-wait_child "$WORKER" 10 || fail "the fixture worker never started its serving child"
-SERVE=$(pgrep -P "$WORKER" | head -n 1)
+wait_child "$WORKER" 10 "$CASE1/remote-root" || fail "the fixture worker never started its serving child"
+SERVE=$(serving_child "$WORKER" "$CASE1/remote-root")
 
 [ "$(pgid_of "$WORKER")" = "$WORKER" ] ||
   fail "the started worker is not its own process group leader, so its tree cannot be signalled as one group"
@@ -161,7 +173,7 @@ rm -rf "$CASE1/remote-jobs"
 kill -KILL "$SERVE" 2>/dev/null || true
 wait_gone "$SERVE" 10 || fail "the recorded serving child did not stop"
 alive "$WORKER" || fail "the fixture supervisor did not survive a lone child kill, so this case no longer covers the leak"
-wait_child "$WORKER" 15 || fail "the supervisor did not respawn after its recorded child pid was killed"
+wait_child "$WORKER" 15 "$CASE1/remote-root" || fail "the supervisor did not respawn after its recorded child pid was killed"
 pass "removing the state root and killing the recorded worker pid leaves the tree running, orphaned"
 
 # A worker whose code root is intact is never a reap candidate, which is what
@@ -172,7 +184,7 @@ alive "$WORKER" || fail "the reaper stopped a worker whose code root still exist
 pass "a worker whose code root still exists is never reaped"
 
 # Prune the code root the way a returned worktree does.
-SURVIVOR=$(pgrep -P "$WORKER" | head -n 1)
+SURVIVOR=$(serving_child "$WORKER" "$CASE1/remote-root")
 rm -rf "$CASE1/remote-root"
 wait_gone "$WORKER" 60 || fail "the worker survived its code root being pruned"
 wait_gone "$SURVIVOR" 60 || fail "a serving child outlived the abandoned supervisor"
@@ -208,8 +220,8 @@ set -m
 STALE=$!
 set +m
 track "$STALE"
-wait_child "$STALE" 10 || fail "the stand-in worker never started its serving child"
-STALE_SERVE=$(pgrep -P "$STALE" | head -n 1)
+wait_child "$STALE" 10 "$CASE2/remote-root" || fail "the stand-in worker never started its serving child"
+STALE_SERVE=$(serving_child "$STALE" "$CASE2/remote-root")
 
 rm -rf "$CASE2/remote-root"
 
