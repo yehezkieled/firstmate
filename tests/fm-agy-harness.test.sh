@@ -434,6 +434,39 @@ test_agy_trust_refuses_out_of_scope_paths() {
   pass "fm-agy-trust.sh: refuses every out-of-scope path and never rewrites a broken store"
 }
 
+# Treehouse shares one pool among every clone of an origin, so a secondmate
+# home's spawn can be handed a slot that is a worktree of another home's clone.
+test_agy_trust_pooled_same_origin_clone_is_trusted_and_others_refused() {
+  local rec store out rc second pooled other pooled_other
+  rec=$(make_agy_trust_case pool)
+  read_agy_trust_case "$rec"
+  store="$HOME_DIR/.gemini/antigravity-cli/settings.json"
+  mkdir -p "$CASE_DIR/pool/1"
+  printf '{"worktrees":[]}\n' > "$CASE_DIR/pool/treehouse-state.json"
+  pooled="$CASE_DIR/pool/1/project"
+  git -C "$PROJ_DIR" worktree add --quiet --detach "$pooled"
+  second="$CASE_DIR/second-home-project"
+  git clone --quiet "file://$PROJ_DIR.origin.git" "$second"
+  out=$(run_agy_trust "$HOME_DIR" "$pooled" "$second") || fail "a pooled worktree of another clone of the same origin must be trusted: $out"
+  assert_agy_trusted "$store" "$pooled" "the pooled worktree was not registered"
+  assert_agy_not_trusted "$store" "$second" "the second home's clone was registered though the worktree does not belong to it"
+  rc=0; out=$(run_agy_trust "$HOME_DIR" "$WT_DIR" "$second") || rc=$?
+  [ "$rc" -ne 0 ] || fail "a non-pooled worktree of another clone must be refused"
+  assert_contains "$out" "is not a worktree of project" "the non-pooled refusal did not name the project mismatch"
+  assert_agy_not_trusted "$store" "$WT_DIR" "a non-pooled foreign worktree was registered"
+  other="$CASE_DIR/other-project"
+  fm_git_init_commit "$other"
+  fm_git_add_origin "$other" "$other.origin.git"
+  mkdir -p "$CASE_DIR/pool/2"
+  pooled_other="$CASE_DIR/pool/2/project"
+  git -C "$other" worktree add --quiet --detach "$pooled_other"
+  rc=0; out=$(run_agy_trust "$HOME_DIR" "$pooled_other" "$PROJ_DIR") || rc=$?
+  [ "$rc" -ne 0 ] || fail "a pooled worktree of an unrelated origin must be refused"
+  assert_contains "$out" "is not a worktree of project" "the unrelated-origin refusal did not name the project mismatch"
+  assert_agy_not_trusted "$store" "$pooled_other" "a pooled unrelated worktree was registered"
+  pass "fm-agy-trust.sh: trusts a pooled worktree of the same origin and refuses non-pooled or unrelated ones"
+}
+
 # The fake tmux renders an agy-shaped screen that advances through
 # launched -> (trust dialog ->) busy as the real spawn drives it, so the launch
 # command, the pre-registration, the single Enter that answers a dialog, and
@@ -909,6 +942,7 @@ test_agy_zero_model_timeout_is_clamped_to_the_default_bound
 test_agy_trust_registers_the_logical_and_resolved_worktree_paths
 test_agy_trust_creates_a_missing_store
 test_agy_trust_refuses_out_of_scope_paths
+test_agy_trust_pooled_same_origin_clone_is_trusted_and_others_refused
 test_agy_fresh_worktree_is_pre_trusted_and_launches_without_a_dialog
 test_agy_dialog_despite_registration_is_answered_once
 test_agy_unregistered_path_ignores_busy_until_the_dialog_is_answered
