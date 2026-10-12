@@ -239,6 +239,33 @@ run_control() {  # <args...>
     "$CONTROL" "$@" 2>&1
 }
 
+# A primary gate is actionable without a worker meta record, and is never
+# answered or stopped. A target whose attributed harness runs in another home
+# must not become this home's primary merely because an environment names it.
+mkdir -p "$LAB/home/state"
+tmux new-window -d -t "$SESSION:" -n primary -c "$LAB/home" \
+  -- "$LAB/agent-pane.sh" "$LAB/imports-gate.txt" || fail "could not start primary"
+sleep 0.5
+# shellcheck source=/dev/null
+. "$ROOT/bin/fm-composer-lib.sh"
+PRIMARY_PID=$(fm_backend_agent_pids tmux "$SESSION:primary")
+[ -n "$PRIMARY_PID" ] || fail "primary agent was not attributed"
+OUT=$(FM_SUPERVISOR_BACKEND=tmux FM_SUPERVISOR_TARGET="$SESSION:primary" run_recover --dry-run)
+case "$OUT" in
+  *'RESTORED_WORKER: primary: parked on the Claude external CLAUDE.md imports prompt'*'session and permissions preserved'*) ;;
+  *) fail "primary gate was not reported: $OUT" ;;
+esac
+kill -0 "$PRIMARY_PID" || fail "primary recovery stopped the session"
+fm_composer_startup_dialog "$(fm_backend_visible_capture tmux "$SESSION:primary")" >/dev/null || fail "primary gate changed"
+OUT=$(FM_HOME="$LAB/foreign" FM_SUPERVISOR_BACKEND=tmux FM_SUPERVISOR_TARGET="$SESSION:primary" "$RECOVER" --dry-run 2>&1)
+# The absent foreign home refuses before inspecting a pane.
+case "$OUT" in *'FM_HOME must name this firstmate home'*) ;; *) fail "absent home was accepted" ;; esac
+mkdir -p "$LAB/foreign/state"
+OUT=$(FM_HOME="$LAB/foreign" FM_SUPERVISOR_BACKEND=tmux FM_SUPERVISOR_TARGET="$SESSION:primary" "$RECOVER" --dry-run)
+[ -z "$OUT" ] || fail "foreign primary was inspected: $OUT"
+tmux kill-window -t "$SESSION:primary"
+pass "primary gate is reported without stopping it, and another home's primary is ignored"
+
 # --- detection -----------------------------------------------------------
 #
 # Every shape a restore can leave, in one home, read once: a gate-parked agent
@@ -276,6 +303,22 @@ esac
   || fail "the sweep stopped an agent that was running a command outside its worktree"
 tmux kill-window -t "$SESSION:fm-busy"
 pass "an agent in its worktree that runs a command in another directory is not flagged or relaunched"
+
+for verdict in busy unknown; do
+  new_task "late-$verdict" wt "$LAB/composer.txt"
+  gen=$("$ROOT/bin/fm-busy-event.sh" arm "$LAB/home/state" "late-$verdict" --state "$verdict") \
+    || fail "could not arm $verdict state"
+  printf 'busy_gen=%s\n' "$gen" >> "$LAB/home/state/late-$verdict.meta"
+  if OUT=$(run_control "late-$verdict" relaunch --idle-only --note recovery); then
+    fail "autonomous recovery stopped a $verdict worker: $OUT"
+  fi
+  case "$OUT" in *"not idle; refusing autonomous recovery"*) ;; *) fail "unexpected refusal: $OUT" ;; esac
+  [ "$(fm_backend_agent_state tmux "$SESSION:fm-late-$verdict")" = alive ] \
+    || fail "autonomous recovery stopped the $verdict worker"
+  tmux kill-window -t "$SESSION:fm-late-$verdict"
+  rm -f "$LAB/home/state/late-$verdict.meta"
+done
+pass "autonomous relaunch refuses busy and unknown workers at the stop boundary"
 
 # --- fm-control exit on a gate-parked agent ------------------------------
 #
@@ -527,3 +570,16 @@ pass "with the lease guard on, several gate-parked workers are all relaunched in
 
 OUT=$(env -u FM_HOME "$RECOVER" 2>&1) && fail "the sweep must refuse without an explicit home: $OUT"
 pass "the sweep refuses without an explicit home"
+
+# A failed detached launcher must not look successful to the boot-marker owner.
+mkdir -p "$LAB/failed-launch"
+cat > "$LAB/failed-launch/nohup" <<'SH'
+#!/bin/sh
+exit 23
+SH
+chmod +x "$LAB/failed-launch/nohup"
+if OUT=$(PATH="$LAB/failed-launch:$PATH" run_recover --background); then
+  fail "failed background exec returned success"
+fi
+case "$OUT" in *'background job did not confirm startup'*) ;; *) fail "launch failure was silent: $OUT" ;; esac
+pass "a failed detached exec is reported to its launcher so the boot remains retryable"

@@ -2413,6 +2413,44 @@ event_wait_or_sleep() {
   esac
 }
 
+# Recovery is independent of a model turn. Boot UUIDs do not change when the
+# clock is adjusted (including WSL clock drift). An unknown platform or failed
+# identity read refuses recovery rather than inventing a restart on every poll.
+watcher_boot_identity() {
+  local boot
+  case "$(uname -s)" in
+    Linux) boot=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null) || return 1 ;;
+    Darwin) boot=$(sysctl -n kern.bootsessionuuid 2>/dev/null) || return 1 ;;
+    *) return 1 ;;
+  esac
+  case "$boot" in ''|*[!a-fA-F0-9-]*) return 1 ;; esac
+  printf '%s' "$boot"
+}
+
+# Called only by the singleton watcher, before a wake can end its cycle.
+# First observation also recovers a reboot that preceded installation. Publish
+# after the launcher returns successfully; a launch failure stays retryable.
+# The sweep retains its existing home lock and independent detached deadline.
+watcher_restart_recovery() {
+  local boot previous marker="$STATE/.watch-restored-boot" pending
+  case "$(uname -s)" in Linux|Darwin) ;; *) return 0 ;; esac
+  boot=$(watcher_boot_identity) || {
+    echo "watcher: cannot read operating-system boot identity; restart recovery deferred" >&2
+    return 1
+  }
+  previous=$(cat "$marker" 2>/dev/null) || previous=
+  [ "$previous" != "$boot" ] || return 0
+  pending=$(mktemp "$STATE/.watch-restored-boot.XXXXXX") || return 1
+  printf '%s\n' "$boot" > "$pending" || { rm -f "$pending"; return 1; }
+  if ! FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+    "$SCRIPT_DIR/fm-restored-recover.sh" --background; then
+    rm -f "$pending"
+    echo "watcher: restored-worker recovery could not be launched; restart remains pending" >&2
+    return 1
+  fi
+  mv -f "$pending" "$marker" || { rm -f "$pending"; return 1; }
+}
+
 # --- Main entry: the runtime below runs only when this file is executed as a
 # script. When sourced (unit tests loading the functions above), return here
 # before acquiring the singleton lock or entering the blocking loop.
@@ -2614,6 +2652,8 @@ FM_WATCH_DELIVERY_IDENTITY=$(fm_pid_identity "$WATCHER_PID" 2>/dev/null || true)
 printf '%s\n' "$FM_WATCH_DELIVERY_IDENTITY" > "$WATCH_LOCK/pid-identity" 2>/dev/null || true
 
 [ -e "$STATE/.last-heartbeat" ] || touch "$STATE/.last-heartbeat"
+
+[ "$WATCH_HOME_EXISTED" -eq 0 ] || watcher_restart_recovery || exit 1
 
 # A merged poll may have queued its terminal wake and then lost the process
 # between receipt publication and fixed-path removal.

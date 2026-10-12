@@ -553,6 +553,26 @@ ok - real claude 2.1.293: the external CLAUDE.md imports prompt is recognized an
 
 The auto-mode question is not exercised live, because no lab launch reproduced it.
 
+### Primary gate findings without a model turn
+
+Verified 2026-10-12 on Linux x86_64 (WSL2), Claude Code 2.1.296, through a named Herdr lab session managed by `bin/fm-herdr-lab.sh`.
+The token-free guard starts a real primary on the folder-trust prompt, invokes the detached recovery without submitting a model prompt, and requires a durable primary finding, its `check: restored-workers` wake, and the same attributed Claude process still alive.
+Refresh it with:
+
+```sh
+bash bin/fm-test-run.sh tests/fm-watch-restart-herdr-live-e2e.test.sh
+```
+
+Observed output:
+
+```text
+Live primary gate guard: 2.1.296 (Claude Code)
+ok - real primary gate produces detached durable finding and wake; session preserved without input or new consent
+```
+
+`tests/fm-watch-restart.test.sh` separately verifies the watcher triggers recovery before delivering an already queued wake and runs only once per boot across rearming, with failed launches retryable.
+Its macOS reader is covered with a command fixture against the [Apple kernel's read-only boot-session UUID interface](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_sysctl.c); no live macOS result is claimed here.
+
 ## Pi seeded-secondmate project trust
 
 [`fm-spawn.sh --help`](../../bin/fm-spawn.sh) owns the seeded-secondmate project-trust approval contract and compatibility fallback.
@@ -1787,7 +1807,7 @@ In the lab, a Claude started in the worktree under a nested shell came back afte
 ```
 
 The resumed agent reads `alive` to the recovery-grade classifier, so no dead-endpoint recovery fires, and with an external `CLAUDE.md` import in the primary checkout it sits on the imports gate recorded in "Claude startup gates".
-[`bin/fm-restored-recover.sh`](../../bin/fm-restored-recover.sh) finds that state at session start and relaunches the worker through `bin/fm-control.sh relaunch`, whose Herdr path moves the top shell back into the worktree.
+The current recovery triggers and operator behavior are documented in [Agents resumed after a restart](../herdr-backend.md#agents-resumed-after-a-restart).
 Observed in the same lab, for a gate-parked worker and for one that was only in the wrong directory:
 
 ```text
