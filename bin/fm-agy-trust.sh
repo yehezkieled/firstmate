@@ -6,7 +6,8 @@
 #
 # Usage: fm-agy-trust.sh <worktree> <project>
 #   <worktree>  the isolated task worktree this spawn launches into
-#   <project>   the primary checkout that worktree belongs to
+#   <project>   the primary checkout that worktree belongs to (or, for a pooled
+#               Treehouse slot, a clone of the same origin)
 # Prints one line naming what it registered; refuses loudly on anything else.
 #
 # WHY THIS EXISTS. agy 1.2.0 gates a folder it has never seen behind
@@ -29,7 +30,13 @@
 # <project>'s common dir - whose top level is exactly the resolved argument. A
 # primary checkout, a worktree of an unrelated repo, a subdirectory of a
 # worktree, a plain directory, and a home directory are each refused with a
-# non-zero exit, never a warning and never a silent skip. Only the launching
+# non-zero exit, never a warning and never a silent skip. The one exception to
+# the shared common dir is a Treehouse pool slot that is a worktree of another
+# clone of <project>'s origin: Treehouse shares one pool among every clone of
+# an origin, so a secondmate home's spawn can be handed another home's slot. It
+# is accepted only when the pool's own state file sits beside the slot
+# directory and both repositories share a non-empty origin (the same test as
+# bin/fm-claude-trust.sh). Only the launching
 # user's own store is written, it must be a regular file this uid owns, every
 # unrelated key and entry is preserved, and the replacement is atomic.
 set -u
@@ -44,6 +51,9 @@ WT_ARG=$1
 PROJ_ARG=$2
 
 refuse() { echo "error: refusing to pre-register agy trust: $1" >&2; exit 1; }
+
+# shellcheck source=bin/fm-git-origin-lib.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/fm-git-origin-lib.sh"
 
 real_dir() { (cd -P -- "$1" 2>/dev/null && pwd -P); }
 logical_dir() { (cd -- "$1" 2>/dev/null && pwd -L); }
@@ -82,7 +92,14 @@ WT_COMMON=$(common_dir_of "$WT_REAL") || true
 
 PROJ_COMMON=$(common_dir_of "$PROJ_REAL") || true
 [ -n "$PROJ_COMMON" ] || refuse "project '$PROJ_REAL' is not inside a git repository"
-[ "$WT_COMMON" = "$PROJ_COMMON" ] || refuse "'$WT_REAL' is not a worktree of project '$PROJ_REAL'"
+if [ "$WT_COMMON" != "$PROJ_COMMON" ]; then
+  WT_POOL_STATE="$(dirname -- "$(dirname -- "$WT_REAL")")/treehouse-state.json"
+  if [ -f "$WT_POOL_STATE" ] && [ ! -L "$WT_POOL_STATE" ] && fm_git_same_origin "$WT_REAL" "$PROJ_REAL"; then
+    :
+  else
+    refuse "'$WT_REAL' is not a worktree of project '$PROJ_REAL'"
+  fi
+fi
 
 command -v node >/dev/null 2>&1 || refuse "node is required to record workspace trust and was not found on PATH"
 
