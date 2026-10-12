@@ -693,7 +693,7 @@ retire_busy_incarnation() {
 # do_exit: stop the running agent, preserving endpoint and worktree. Prints
 # `already-stopped`, `endpoint-gone`, `stopped`, or `stopped-at-startup-gate`.
 do_exit() {
-  local state cmd hazard verdict composer_state cancel absence interrupt_result=not-needed dialog
+  local state cmd hazard verdict composer_state cancel absence interrupt_result=not-needed dialog native
   require_state_verified_backend exit
   state=$(agent_state)
   case "$state" in
@@ -748,6 +748,11 @@ do_exit() {
   verdict=$(busy_verdict)
   if [ "$IDLE_ONLY" = 1 ] && [ "${verdict%% *}" != idle ]; then
     die "task $ID now reads $verdict, not idle; refusing autonomous recovery"
+  fi
+  if [ "$IDLE_ONLY" = 1 ] && [ "$BACKEND" = herdr ]; then
+    native=$(fm_backend_busy_state "$BACKEND" "$T") || native=unknown
+    [ "$native" = idle ] \
+      || die "task $ID now reads $native in Herdr, not idle; refusing autonomous recovery"
   fi
   case "$verdict" in
     busy*)

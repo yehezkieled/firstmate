@@ -2031,7 +2031,15 @@ case "${1:-} ${2:-}" in
     fi
     exit 0 ;;
   'agent get')
-    if [ -f "$D/herdr-agent-registration" ]; then
+    if [ -f "$D/herdr-native-status" ]; then
+      if [ -f "$D/herdr-native-read" ]; then
+        native=$(cat "$D/herdr-native-status")
+      else
+        native=idle
+        : > "$D/herdr-native-read"
+      fi
+      printf '{"result":{"agent":{"agent_status":"%s"}}}\n' "$native"
+    elif [ -f "$D/herdr-agent-registration" ]; then
       cat "$D/herdr-agent-registration"
     elif [ -f "$D/herdr-agent-live" ]; then
       # The agent came back with its server. Nothing here is reclaimable.
@@ -2165,6 +2173,45 @@ herdr_case_or_skip() {  # <name> <id> [session] [surviving-pane]
   add_herdr_ship_task "$HERDR_CASE_DIR" "$2" "${3:-fmlab}" "${4:-%7}"
   make_herdr_stub "$HERDR_CASE_DIR"
   return 0
+}
+
+test_autonomous_herdr_relaunch_requires_fresh_native_idle() {
+  local dir native out rc gen log
+  for native in working unknown idle; do
+    herdr_case_or_skip "native-idle-$native" "native-$native" || {
+      echo "skip - native idle recovery needs jq"
+      return 0
+    }
+    dir=$HERDR_CASE_DIR
+    rm -f "$dir/fake/herdr-stopped"
+    printf '%s' "$native" > "$dir/fake/herdr-native-status"
+    gen=$("$ROOT/bin/fm-busy-event.sh" arm "$dir/home/state" "native-$native" \
+      --state idle --source claude-hook --event Stop) || fail "could not seed stale idle hook"
+    printf 'busy_gen=%s\n' "$gen" >> "$dir/home/state/native-$native.meta"
+    rc=0
+    out=$(run_control "$dir" "native-$native" relaunch --idle-only --note recovery) || rc=$?
+    [ "$rc" != 0 ] || fail "unexpected relaunch success: $out"
+    log=$(cat "$dir/fake/herdr-log")
+    assert_not_contains "$out" "idle claude-hook, not idle" "semantic hook evidence must read idle"
+    case "$native" in
+      working|unknown)
+        assert_contains "$out" "in Herdr, not idle; refusing autonomous recovery" \
+          "stale semantic idle must not override native $native"
+        assert_not_contains "$log" "pane send-" "a refused worker must receive no lifecycle input"
+        ;;
+      idle)
+        assert_not_contains "$out" "refusing autonomous recovery" \
+          "native and semantic idle must pass the recovery guard"
+        assert_contains "$out" "composer" "idle must reach the ordinary composer check"
+        ;;
+    esac
+    rm -f "$dir/fake/herdr-native-read"
+    rc=0
+    out=$(run_control "$dir" "native-$native" relaunch --note recovery) || rc=$?
+    assert_not_contains "$out" "refusing autonomous recovery" "explicit operator control must remain unchanged"
+    assert_contains "$out" "composer" "operator relaunch must reach the ordinary composer check"
+  done
+  pass "autonomous Herdr relaunch requires fresh native idle despite stale idle hooks"
 }
 
 test_herdr_relaunch_resumes_only_the_registered_pi_session() {
@@ -2552,6 +2599,7 @@ test_tmux_refuses_a_window_missing_from_its_session
 test_tmux_refuses_a_session_that_cannot_be_found
 test_tmux_refuses_when_the_server_is_gone
 test_reclaim_refuses_an_unreadable_endpoint
+test_autonomous_herdr_relaunch_requires_fresh_native_idle
 test_herdr_relaunch_resumes_only_the_registered_pi_session
 test_herdr_reclaim_adopts_a_pane_that_outlived_its_server
 test_herdr_exit_reports_already_stopped_when_the_pane_outlived_its_server
