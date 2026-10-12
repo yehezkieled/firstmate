@@ -1,0 +1,4 @@
+ok - first observation and each boot recover once across cycles and rearming; failed launches retry
+ok - unreadable boot identity refuses recovery visibly
+ok - Linux and macOS readers consume kernel boot UUIDs
+ok - actual watcher triggers recovery before a queued wake exits the cycle

@@ -1,0 +1,6 @@
+check: rearm-resurface
+cycle 1 boot marker: 998a895b-83a5-42a9-99e4-27e35537cdc9
+recovery result files: 1
+check: rearm-resurface
+cycle 2 boot marker: 998a895b-83a5-42a9-99e4-27e35537cdc9
+recovery result files: 1
