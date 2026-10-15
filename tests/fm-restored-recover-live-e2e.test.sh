@@ -15,6 +15,9 @@
 # Claude is launched bare in a disposable project and never receives a prompt,
 # so this consumes no model tokens. Both launches and trust registration use
 # a disposable copy of the launching user's onboarded Claude configuration.
+# File credentials, when present, are copied from $HOME/.claude independently
+# of CLAUDE_CONFIG_DIR; neither the source configuration nor credentials are
+# written by the guard.
 # Neither gate is answered, and the guard asserts no consent is recorded.
 set -u
 
