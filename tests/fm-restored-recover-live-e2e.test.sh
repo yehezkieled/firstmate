@@ -34,6 +34,7 @@ LAB=$(mktemp -d "${TMPDIR:-/tmp}/fm-restored-live.XXXXXX")
 LAB=$(cd "$LAB" && pwd -P)
 SESSION=gates
 SOURCE_CONFIG=${CLAUDE_CONFIG_DIR:-$HOME}
+SOURCE_CREDENTIALS_DIR=$HOME/.claude
 export CLAUDE_CONFIG_DIR="$LAB/claude-config"
 STORE="$CLAUDE_CONFIG_DIR/.claude.json"
 
@@ -47,14 +48,14 @@ cleanup_all() {
 trap cleanup_all EXIT
 
 mkdir -p "$LAB/shim" "$LAB/home/state" "$LAB/home/data" "$CLAUDE_CONFIG_DIR"
-node - "$SOURCE_CONFIG" "$CLAUDE_CONFIG_DIR" <<'NODE' || fail "could not isolate Claude configuration"
+node - "$SOURCE_CONFIG" "$SOURCE_CREDENTIALS_DIR" "$CLAUDE_CONFIG_DIR" <<'NODE' || fail "could not isolate Claude configuration"
 const fs = require('node:fs');
 const path = require('node:path');
-const [source, target] = process.argv.slice(2);
+const [source, credentialsDir, target] = process.argv.slice(2);
 const config = JSON.parse(fs.readFileSync(path.join(source, '.claude.json'), 'utf8'));
 config.projects = {};
 fs.writeFileSync(path.join(target, '.claude.json'), JSON.stringify(config), { mode: 0o600 });
-const credentials = path.join(source, '.credentials.json');
+const credentials = path.join(credentialsDir, '.credentials.json');
 if (fs.existsSync(credentials)) {
   fs.copyFileSync(credentials, path.join(target, '.credentials.json'));
   fs.chmodSync(path.join(target, '.credentials.json'), 0o600);
