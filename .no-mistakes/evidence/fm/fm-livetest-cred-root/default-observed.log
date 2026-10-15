@@ -1,0 +1,4 @@
+Observed disposable credentials equal ordinary ~/.claude/.credentials.json; mode 0600.
+ok - real claude 2.1.300: the folder-trust prompt is recognized and fm-control exit stops Claude without trusting the folder
+ok - real claude 2.1.300: the external CLAUDE.md imports prompt is recognized and fm-control exit stops Claude without approving the imports
+Real-Claude startup scenarios completed successfully.

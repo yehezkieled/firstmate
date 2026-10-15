@@ -1,0 +1,3 @@
+Final paired live run: real ~/.claude.json and ~/.claude/.credentials.json remained byte-for-byte unchanged.
+Default and overridden CLAUDE_CONFIG_DIR: disposable credentials matched ordinary ~/.claude/.credentials.json with mode 0600. Override decoy credentials were not selected.
+Earlier observation detected real configuration drift of unknown origin; a fresh paired run did not reproduce it. Real credentials remained unchanged throughout.
