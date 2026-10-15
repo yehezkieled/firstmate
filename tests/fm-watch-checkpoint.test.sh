@@ -24,12 +24,61 @@ test_quiet_checkpoint_exits_124_cleanly() {
   FM_HOME="$home" FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 "$CHECKPOINT" --seconds 1 >"$out" 2>"$err" || status=$?
   expect_code 124 "$status" "quiet checkpoint exit"
   assert_contains "$(cat "$out")" "checkpoint: no actionable wake within 1s" "quiet checkpoint line missing"
-  # A timeout during startup can leave stale recovery evidence; only a live
-  # holder means the checkpoint failed to stop its watcher.
-  if [ -e "$home/state/.watch.lock/pid" ] && kill -0 "$(cat "$home/state/.watch.lock/pid")" 2>/dev/null; then
-    fail "a quiet checkpoint left its watcher running"
-  fi
+  assert_absent "$home/state/.watch.lock/pid" "watch lock pid survived quiet checkpoint timeout"
   pass "quiet checkpoint exits 124 with a clean checkpoint line and no live lock"
+}
+
+test_timeout_during_startup_recovery_releases_lock() {
+  local home out err status holder
+  home=$(make_home startup-race)
+  out="$home/out.txt"
+  err="$home/err.txt"
+  status=0
+  # A live holder of the wake-queue lock stalls the watcher's post-acquire
+  # recovery-marker work, so the checkpoint's TERM lands before the poll loop.
+  # It lets go one second after the TERM, inside the watcher's cleanup bound.
+  bash -c '
+    . "$1/bin/fm-wake-lib.sh"
+    FM_HOME="$2" STATE="$2/state" fm_lock_try_acquire "$2/state/.wake-queue.lock" && sleep 3
+  ' _ "$ROOT" "$home" &
+  holder=$!
+  sleep 0.5
+  FM_HOME="$home" FM_POLL=1 FM_SIGNAL_GRACE=10 FM_CHECK_INTERVAL=999999 "$CHECKPOINT" --seconds 2 >"$out" 2>"$err" || status=$?
+  wait "$holder" 2>/dev/null || true
+  expect_code 124 "$status" "startup-race checkpoint exit"
+  assert_absent "$home/state/.watch.lock/pid" "watch lock pid survived quiet checkpoint timeout during startup recovery"
+  pass "a checkpoint timeout during post-acquire recovery work still releases the watch lock"
+}
+
+test_timeout_inside_recovery_marker_lock_releases_lock() {
+  local home fakebin real_cat successor status
+  real_cat=$(command -v cat)
+  for successor in 0 1; do
+    home=$(make_home "marker-lock-$successor")
+    fakebin="$home/fakebin"
+    mkdir -p "$fakebin"
+    cat > "$fakebin/cat" <<'SH'
+#!/usr/bin/env bash
+case "${1:-}" in
+  "$FM_HOME/state/.watcher-down.lock.owner."*/pid)
+    if [ -L "$FM_HOME/state/.watcher-down.lock" ] && [ ! -e "$FM_HOME/stalled" ]; then
+      "$REAL_CAT" "$1" > "$FM_HOME/stalled"
+      sleep 3
+    fi
+    ;;
+esac
+exec "$REAL_CAT" "$@"
+SH
+    chmod +x "$fakebin/cat"
+    status=0
+    PATH="$fakebin:$PATH" REAL_CAT="$real_cat" FM_HOME="$home" \
+      FM_WATCH_HANDLING_SUCCESSOR="$successor" FM_POLL=1 FM_SIGNAL_GRACE=10 \
+      FM_CHECK_INTERVAL=999999 "$CHECKPOINT" --seconds 2 >"$home/out" 2>"$home/err" || status=$?
+    expect_code 124 "$status" "marker-lock checkpoint exit ($successor)"
+    [ -s "$home/stalled" ] || fail "startup never held the recovery marker lock ($successor)"
+    assert_absent "$home/state/.watch.lock/pid" "watch lock survived interruption inside marker lock ($successor)"
+    pass "checkpoint releases the watch lock after interrupting a held recovery marker lock ($successor)"
+  done
 }
 
 test_signal_passes_through_and_exits_zero() {
@@ -201,6 +250,8 @@ test_real_host_checkpoint_ends_quietly_at_its_bound() {
 }
 
 test_quiet_checkpoint_exits_124_cleanly
+test_timeout_during_startup_recovery_releases_lock
+test_timeout_inside_recovery_marker_lock_releases_lock
 test_signal_passes_through_and_exits_zero
 test_registered_check_uses_preserved_watcher_environment
 test_existing_singleton_watcher_is_not_success
