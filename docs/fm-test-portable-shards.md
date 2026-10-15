@@ -55,6 +55,7 @@ Each shard is still strictly serial in itself; on GitHub-hosted runners, separat
 In `yehezkieled/firstmate`, push and same-repository PR runs route Linux jobs in `.github/workflows/ci.yml` and `.github/workflows/no-mistakes-required.yml` to runners labelled `self-hosted` and `hezki-pc`.
 External PRs and every other repository retain `ubuntu-latest` for those Linux jobs.
 On the fork's self-hosted runners, shards may run concurrently on one host, with per-job `TMUX_TMPDIR` and npm global prefixes rather than a proven machine isolation boundary.
+Spawned task temp roots and launch namespaces stay out of the shared `/tmp` there because `tests/lib.sh` gives every test script its own private base for them.
 The fork also runs the required real-Herdr lane on these runners with per-job XDG config, state, and lab directories; only stock macOS Bash coverage is skipped because the PC runners are Linux.
 
 `bin/fm-test-run.sh` owns `n` and refuses any lane whose `of<n>` disagrees with it.

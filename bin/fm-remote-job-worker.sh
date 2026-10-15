@@ -935,6 +935,11 @@ worker_run_job() { # <account-home> <job-dir>
   if [ -n "${FM_REMOTE_JOB_PLATFORM_OVERRIDE:-}" ]; then
     child_env+=("FM_REMOTE_JOB_PLATFORM_OVERRIDE=$FM_REMOTE_JOB_PLATFORM_OVERRIDE")
   fi
+  # A suite's private task temp base must reach the remote spawn it drives too
+  # (fm_task_tmp_base in bin/fm-control-lib.sh); outside the suite it is unset.
+  if [ "${FM_TEST_SEAM:-}" = 1 ] && [ -n "${FM_TEST_TASK_TMP_BASE:-}" ]; then
+    child_env+=(FM_TEST_SEAM=1 "FM_TEST_TASK_TMP_BASE=$FM_TEST_TASK_TMP_BASE")
+  fi
   remaining=$((deadline - $(date +%s)))
   [ "$remaining" -gt 0 ] || {
     worker_cleanup_output_capture "$job" "$stdout_reader" "$stderr_reader"
