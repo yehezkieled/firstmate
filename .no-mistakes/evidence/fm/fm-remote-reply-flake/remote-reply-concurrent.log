@@ -1,0 +1,71 @@
+ok - default delta reader waits 0.5 seconds then delivers a non-destructive complete-line delta
+ok - override delta reader waits 0.07 seconds then delivers a non-destructive complete-line delta
+ok - a blocking non-destructive remote delta reaches durable process-event capture
+ok - a captured delta is applied, acknowledged, and re-armed without a handler
+ok - ingest appends one validated line, fetches its document, and advances the cursor
+ok - replayed capture has one deduplicated append and one durable handling identity
+ok - later generations cannot invalidate an unacknowledged ingested result
+ok - the remote status and decision model mirrors and the cursor advances
+ok - a remote mate's new decision folds open exactly as a local mate's does
+ok - a replayed mirrored delta is idempotent in both the stream and the cursor
+Remote source status records:
+done [corr=0123456789abcdef] [at=1700000000]: build verified report=data/reply/report.md
+working [corr=1111111111111111]: second generation
+done [corr=2222222222222222]: third generation
+working [key=version-audit]: family --version audit complete (data/reply/prose-only.md)
+needs-decision [key=rough-cut-version]: implement --version or retire the tool
+needs-decision [at=1700000000]: which base branch?
+needs-decision [at=1700086400]: which base branch?
+done [corr=923f0f6be65fa8c1]: release chain audited
+
+Parent status after handling and replaying generation 4:
+done [corr=0123456789abcdef] [at=1700000000]: build verified report=data/remote-secondmates/ios/data/reply/report.md
+working [corr=1111111111111111]: second generation
+done [corr=2222222222222222]: third generation
+working [key=version-audit]: family --version audit complete (data/reply/prose-only.md)
+needs-decision [key=rough-cut-version]: implement --version or retire the tool
+needs-decision [at=1700000000]: which base branch?
+needs-decision [at=1700086400]: which base branch?
+done [corr=923f0f6be65fa8c1]: release chain audited
+
+Committed remote cursor:
+schema=fm-remote-reply-cursor.v1
+offset=508
+prefix_sha256=ebce015e8ad6c11e7f58075993c9772cea703e8c08d18a1e48d69d53566f205b
+ok - transported control bytes are normalized in place and never stop the stream
+ok - payload protocol-field names cannot collide with transport metadata
+ok - NUL bytes are normalized in place before shell line processing
+ok - local document storage failures remain retryable until delivery succeeds
+ok - a structured pointer must end at its token boundary
+ok - adjacent pointers are fetched while malformed tokens remain unchanged
+ok - a rejected candidate never gives the following text a false leading boundary
+ok - nested remote reports relay while an undeliverable foreign pointer fails open
+ok - the reported incident raises no standing decision and still delivers the report
+ok - an undeliverable structured offer fails open with one note and never a decision
+ok - a remote refusal surfaces its own reason without opening a decision
+ok - a failed pointer extraction never commits a partial delta
+ok - a failed mirror write never drops status content or advances the cursor
+ok - source-line identity survives commit failure and cursor-loss recapture
+ok - a mirrored reserved-key line cannot squat or clear the parent's own decision
+ok - a reply that arrives after escalation resolves it and clears the open decision
+Continuous listener: owner=live pid=1550871 polls=3; mirrored status: working [corr=abcdefabcdefabcd]: held across an empty wait
+ok - a remote reply listener stays owned across empty waits and a delta
+ok - a failed remote read exits instead of relistening
+ok - persistent ingestion failure leaves exactly one durable capture
+ok - a preempted reply poll reports a closed window without publishing channel freshness
+ok - a preempted reply poll keeps its listener and reconcile launches nothing
+ok - a quiet reply window publishes the caught-up watermark the reply guard reads
+ok - a cursor-loss whole-log recapture is acknowledged quietly with no duplicate wake
+
+New continuity escalation after ingest retry:
+blocked [key=remote-reply-continuity-ios] [at=1792096485]: remote reply continuity broke for ios (truncated) at offset 2510 prefix 50793f5ae771 retirements 0
+ok - truncation is detected, escalated once, and not silently rebased
+ok - a repeated continuity break after an operator resolve appends nothing
+ok - remote reply retirement quiesces and refuses unhandled captured results
+ok - a later continuity break after repair and re-advance opens the decision again
+ok - an old-format continuity line does not swallow the next break
+ok - a later continuity break after the cursor moves without retirement opens the decision again
+ok - a continuity break after retirement and an identical restore opens the decision once
+ok - a failed cursor removal does not increase the retirement count
+ok - a retirement that stops after removing the cursor leaves the old count
+ALL TESTS PASSED
