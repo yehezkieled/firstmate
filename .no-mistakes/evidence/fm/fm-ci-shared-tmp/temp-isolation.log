@@ -1,0 +1,4 @@
+Concurrent fixture bases: ['/tmp/fm-tasktmp.vpqGr9', '/tmp/fm-tasktmp.7eV5tD']
+private sm1 directory still present
+private sm1 directory still present
+Both EXIT cleanups removed their own bases.
