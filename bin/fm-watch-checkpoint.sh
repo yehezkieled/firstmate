@@ -100,10 +100,13 @@ run_with_perl_timeout() {  # <seconds> <command...>
 }
 
 run_bounded() {  # <seconds> <command...>
+  # --foreground signals only the watcher itself: plain timeout follows the
+  # TERM with a second one to the whole group, and that second signal can end
+  # the watcher before its EXIT cleanup releases the watch lock.
   if command -v timeout >/dev/null 2>&1; then
-    timeout "$@"
+    timeout --foreground "$@"
   elif command -v gtimeout >/dev/null 2>&1; then
-    gtimeout "$@"
+    gtimeout --foreground "$@"
   else
     run_with_perl_timeout "$@"
   fi

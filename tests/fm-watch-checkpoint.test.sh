@@ -24,12 +24,31 @@ test_quiet_checkpoint_exits_124_cleanly() {
   FM_HOME="$home" FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 "$CHECKPOINT" --seconds 1 >"$out" 2>"$err" || status=$?
   expect_code 124 "$status" "quiet checkpoint exit"
   assert_contains "$(cat "$out")" "checkpoint: no actionable wake within 1s" "quiet checkpoint line missing"
-  # A timeout during startup can leave stale recovery evidence; only a live
-  # holder means the checkpoint failed to stop its watcher.
-  if [ -e "$home/state/.watch.lock/pid" ] && kill -0 "$(cat "$home/state/.watch.lock/pid")" 2>/dev/null; then
-    fail "a quiet checkpoint left its watcher running"
-  fi
+  assert_absent "$home/state/.watch.lock/pid" "watch lock pid survived quiet checkpoint timeout"
   pass "quiet checkpoint exits 124 with a clean checkpoint line and no live lock"
+}
+
+test_timeout_during_startup_recovery_releases_lock() {
+  local home out err status holder
+  home=$(make_home startup-race)
+  out="$home/out.txt"
+  err="$home/err.txt"
+  status=0
+  # A live holder of the wake-queue lock stalls the watcher's post-acquire
+  # recovery-marker work, so the checkpoint's TERM lands before the poll loop.
+  # It lets go one second after the TERM, inside the watcher's cleanup bound.
+  (
+    # shellcheck source=bin/fm-wake-lib.sh
+    . "$ROOT/bin/fm-wake-lib.sh"
+    FM_HOME="$home" STATE="$home/state" fm_lock_try_acquire "$home/state/.wake-queue.lock" && sleep 3
+  ) &
+  holder=$!
+  sleep 0.5
+  FM_HOME="$home" FM_POLL=1 FM_SIGNAL_GRACE=10 FM_CHECK_INTERVAL=999999 "$CHECKPOINT" --seconds 2 >"$out" 2>"$err" || status=$?
+  wait "$holder" 2>/dev/null || true
+  expect_code 124 "$status" "startup-race checkpoint exit"
+  assert_absent "$home/state/.watch.lock/pid" "watch lock pid survived quiet checkpoint timeout during startup recovery"
+  pass "a checkpoint timeout during post-acquire recovery work still releases the watch lock"
 }
 
 test_signal_passes_through_and_exits_zero() {
@@ -201,6 +220,7 @@ test_real_host_checkpoint_ends_quietly_at_its_bound() {
 }
 
 test_quiet_checkpoint_exits_124_cleanly
+test_timeout_during_startup_recovery_releases_lock
 test_signal_passes_through_and_exits_zero
 test_registered_check_uses_preserved_watcher_environment
 test_existing_singleton_watcher_is_not_success
