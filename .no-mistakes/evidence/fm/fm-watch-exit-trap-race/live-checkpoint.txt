@@ -1,0 +1,27 @@
+SCENARIO quiet
+command: FM_HOME=<disposable lab> FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 bin/fm-watch-checkpoint.sh --seconds 2
+exit=124
+checkpoint: no actionable wake within 2s
+
+
+watch lock pid exists=False
+SCENARIO actionable
+command: FM_HOME=<disposable lab> FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 bin/fm-watch-checkpoint.sh --seconds 8
+exit=0
+signal: /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M50AVJKBSPGD1PKXH3GTZAMP/.live-checkpoint-tx4jmw91/state/demo.status
+
+
+watch lock pid exists=False
+drained durable notification:
+1792086591	2	signal	demo.status	signal: /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M50AVJKBSPGD1PKXH3GTZAMP/.live-checkpoint-tx4jmw91/state/demo.status
+wake annotation: latest wake-EVENT observed at drain, not current state: demo.status: done: manual notification
+STATUS OUTCOME BACKSTOP (newest captain-facing task event has no covering branch outcome):
+demo done: manual notification
+
+SCENARIO startup-contention
+command: FM_HOME=<disposable lab> FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 bin/fm-watch-checkpoint.sh --seconds 2
+exit=124
+checkpoint: no actionable wake within 2s
+
+
+watch lock pid exists=False
