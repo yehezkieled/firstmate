@@ -37,11 +37,10 @@ test_timeout_during_startup_recovery_releases_lock() {
   # A live holder of the wake-queue lock stalls the watcher's post-acquire
   # recovery-marker work, so the checkpoint's TERM lands before the poll loop.
   # It lets go one second after the TERM, inside the watcher's cleanup bound.
-  (
-    # shellcheck source=bin/fm-wake-lib.sh
-    . "$ROOT/bin/fm-wake-lib.sh"
-    FM_HOME="$home" STATE="$home/state" fm_lock_try_acquire "$home/state/.wake-queue.lock" && sleep 3
-  ) &
+  bash -c '
+    . "$1/bin/fm-wake-lib.sh"
+    FM_HOME="$2" STATE="$2/state" fm_lock_try_acquire "$2/state/.wake-queue.lock" && sleep 3
+  ' _ "$ROOT" "$home" &
   holder=$!
   sleep 0.5
   FM_HOME="$home" FM_POLL=1 FM_SIGNAL_GRACE=10 FM_CHECK_INTERVAL=999999 "$CHECKPOINT" --seconds 2 >"$out" 2>"$err" || status=$?
