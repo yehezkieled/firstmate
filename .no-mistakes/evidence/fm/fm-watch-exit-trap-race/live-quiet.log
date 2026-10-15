@@ -1,0 +1,3 @@
+checkpoint: no actionable wake within 1s
+exit=124
+watch-lock-pid=ABSENT

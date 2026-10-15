@@ -1,0 +1,2 @@
+{"watcher_pid": 2435762, "marker_lock_present_when_stopped": true, "marker_owner": "2435762", "successor": 0, "exit": 124, "stdout": "checkpoint: no actionable wake within 2s\n", "stderr": "", "watch_lock_pid_present": false}
+{"watcher_pid": 2439877, "marker_lock_present_when_stopped": true, "marker_owner": "2439877", "successor": 1, "exit": 124, "stdout": "checkpoint: no actionable wake within 2s\n", "stderr": "", "watch_lock_pid_present": false}

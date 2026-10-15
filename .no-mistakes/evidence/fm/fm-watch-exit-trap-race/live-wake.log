@@ -1,0 +1,8 @@
+signal: /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M4ZDZVAKFAZ8880BJ08K3NZD/.test-tmp/live-wake/state/validation.status
+exit=0
+1792056537	2	signal	validation.status	signal: /home/hezki/.no-mistakes/worktrees/e677c3fe7f2c/01M4ZDZVAKFAZ8880BJ08K3NZD/.test-tmp/live-wake/state/validation.status
+WAKE_ACK_REQUIRED: after handling completes run bin/fm-wake-drain.sh --ack-through 2 --recovery-generation 2380192.1792056537.CtHsiV
+wake annotation: latest wake-EVENT observed at drain, not current state: validation.status: done: checkpoint validation
+STATUS OUTCOME BACKSTOP (newest captain-facing task event has no covering branch outcome):
+validation done: checkpoint validation
+watch-lock-pid=ABSENT
