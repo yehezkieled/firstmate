@@ -310,7 +310,8 @@
 #   $vars and silently breaks ad-hoc `for ... in $pairs` loops).
 # Launch delivery:
 #   Every harness and backend receives its complete launch command from a
-#   never-reused 0600 file in a 0700 home-scoped task namespace under /tmp, while
+#   never-reused 0600 file in a 0700 home-scoped task namespace under the base
+#   owned by fm_task_tmp_base (bin/fm-control-lib.sh), while
 #   the pane receives only a short source line.
 #   This keeps commands beyond the terminal's roughly 1,024-byte input boundary
 #   intact, prevents a delayed source line from being rebound by a relaunch, and
@@ -4559,9 +4560,9 @@ agy)
   ;;
 esac
 
-# Per-task temp root: /tmp/fm-<id>/ with Go's build temp nested at gotmp/. Go won't
+# Per-task temp root: <task-temp-base>/fm-<id>/ with Go's build temp nested at gotmp/. Go won't
 # create GOTMPDIR, so mkdir before it is used; fm-teardown removes the whole root.
-# Nested (not a bare /tmp/fm-<id>/gotmp) so other per-task temp can live alongside
+# Nested so other per-task temp can live alongside
 # later, and teardown cleans one deterministic path. GOTMPDIR (not TMPDIR) is the
 # targeted knob: TMPDIR is too broad (affects every program's temp, not just Go's).
 # The root is private (0700) because its path is predictable under a shared
@@ -4569,7 +4570,9 @@ esac
 # this user and writable by nobody else, then tightened, so no other local user
 # can plant or swap a file in it. The staged launch command lives in a sibling
 # directory namespaced by home identity, not in this shared per-id root.
-TASK_TMP="/tmp/fm-$ID"
+# fm_task_tmp_base (bin/fm-control-lib.sh) owns the base location.
+TASK_TMP_BASE=$(fm_task_tmp_base)
+TASK_TMP="$TASK_TMP_BASE/fm-$ID"
 if ! (umask 077 && mkdir "$TASK_TMP") 2>/dev/null; then
   if [ -L "$TASK_TMP" ] || [ ! -d "$TASK_TMP" ] || [ ! -O "$TASK_TMP" ] ||
     [ -n "$(find "$TASK_TMP" -prune \( -perm -g=w -o -perm -o=w \) -print 2>/dev/null)" ] ||
@@ -5529,7 +5532,7 @@ fi
 case "$SPAWN_GEN" in
   *[!A-Za-z0-9.]*|'') echo "error: spawn incarnation token is not a usable launch-file nonce" >&2; exit 1 ;;
 esac
-LAUNCH_DIR="/tmp/fm-$ID+$LAUNCH_HOME_TOKEN"
+LAUNCH_DIR="$TASK_TMP_BASE/fm-$ID+$LAUNCH_HOME_TOKEN"
 if ! (umask 077 && mkdir "$LAUNCH_DIR") 2>/dev/null; then
   if [ -L "$LAUNCH_DIR" ] || [ ! -d "$LAUNCH_DIR" ] || [ ! -O "$LAUNCH_DIR" ] ||
     [ -n "$(find "$LAUNCH_DIR" -prune \( -perm -g=w -o -perm -o=w \) -print 2>/dev/null)" ] ||

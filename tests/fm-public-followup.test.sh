@@ -42,8 +42,10 @@ EOF
 }
 
 # The remote-route cases drive the real remote job worker, which outlives the
-# command that staged its job. Stop it before the shared fixture cleanup runs,
-# and keep that cleanup (tests/lib.sh owns it) rather than replacing the trap.
+# command that staged its job. Stop its whole tree before the shared fixture
+# cleanup runs (killing only the recorded serving pid leaves its restart
+# supervisor respawning into the directory being removed), and keep that
+# cleanup (tests/lib.sh owns it) rather than replacing the trap.
 pf_test_cleanup() {
   local pid_file="${REMOTE_FIXTURE_JOBS:-$TMP_ROOT/remote-jobs}/worker.pid" pid
   if [ -n "$PF_TEST_LOCK_HOLDER" ]; then
@@ -53,7 +55,11 @@ pf_test_cleanup() {
   fi
   if [ -f "$pid_file" ]; then
     pid=$(cat "$pid_file" 2>/dev/null) || pid=
-    [ -z "$pid" ] || kill "$pid" 2>/dev/null || true
+    if [ -n "$pid" ]; then
+      # shellcheck source=bin/fm-remote-job-lib.sh
+      . "$ROOT/bin/fm-remote-job-lib.sh"
+      fm_remote_job_stop_worker_tree "$pid" || true
+    fi
   fi
   fm_test_cleanup
 }
@@ -1517,7 +1523,8 @@ test_dropped_baton_now_surfaces_open_loop() {
     --outcome report-ready --deliverable report_path=data/pi-rearm-loop-repro-s1/report.md \
     --outcome-text 'Reproduced the loop. A bounded fix is scoped and waiting on you, captain.' >/dev/null \
     || fail "emit failed"
-  FAKE_CURL_LOG="$log" run_pf "$parent" consume | grep -q '^ready ' || fail "consume not ready"
+  FAKE_CURL_LOG="$log" run_pf "$parent" consume > "$parent/consume.out" || fail "consume failed"
+  grep -q '^ready ' "$parent/consume.out" || fail "consume not ready"
   FAKE_CURL_LOG="$log" run_pf "$parent" deliver public-final-pi-rearm-repro >/dev/null || fail "deliver failed"
   [ "$(followup_posts "$log")" = 1 ] || fail "expected exactly one closing post"
   assert_present "$parent/state/public-followup/registry/public-final-pi-rearm-repro" \
@@ -1621,7 +1628,8 @@ SH
     --source-home main --work-id ship-b --generation 1 \
     --outcome pr-merged --deliverable pr_url=https://github.com/example/repo/pull/99 \
     --outcome-text 'Shipped: the Pi recovery loop is fixed.' >/dev/null || fail "follow-on emit failed"
-  FAKE_CURL_LOG="$log" run_pf "$parent" consume | grep -q '^ready public-final-b ' \
+  FAKE_CURL_LOG="$log" run_pf "$parent" consume > "$parent/consume.out" || fail "follow-on consume failed"
+  grep -q '^ready public-final-b ' "$parent/consume.out" \
     || fail "follow-on consume not ready"
   FAKE_CURL_LOG="$log" run_pf "$parent" deliver public-final-b >/dev/null || fail "follow-on deliver failed"
   posts=$(followup_posts "$log")
@@ -2094,7 +2102,8 @@ test_retire_reason_closes_the_open_loop() {
   emit_terminal "$home" "$home" pf-retire main work-retire >/dev/null || fail "emit failed"
   FAKE_CURL_LOG="$log" run_pf "$home" consume >/dev/null || fail "consume failed"
   FAKE_CURL_LOG="$log" run_pf "$home" deliver pf-retire >/dev/null || fail "deliver failed"
-  run_pf "$home" pending | grep -q '^open-loop pf-retire ' \
+  run_pf "$home" pending > "$home/pending.out" || fail "pending failed"
+  grep -q '^open-loop pf-retire ' "$home/pending.out" \
     || fail "pending must show the delivered open loop"
   expect_failure "retire without --reason must refuse" run_pf "$home" retire pf-retire
   assert_contains "$EXPECT_OUT" "--reason" "the refusal must name the required reason"

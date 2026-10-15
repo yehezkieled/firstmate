@@ -429,3 +429,17 @@ fm_control_harness_turnend_auth_path() {  # <harness> <token>
     *) return 0 ;;
   esac
 }
+
+# The directory holding every task's temp root (fm-<id>) and home-scoped launch
+# namespace (fm-<id>+<home hash>), shared by fm-spawn and fm-teardown. It is
+# /tmp outside the suite. Under FM_TEST_SEAM=1, FM_TEST_TASK_TMP_BASE moves it
+# to a private absolute directory, so concurrent suites on one host, including
+# runs as different users, never contend for the same predictable /tmp paths.
+fm_task_tmp_base() {
+  if [ "${FM_TEST_SEAM:-}" = 1 ]; then
+    case "${FM_TEST_TASK_TMP_BASE:-}" in
+      /*) printf '%s\n' "${FM_TEST_TASK_TMP_BASE%/}"; return 0 ;;
+    esac
+  fi
+  printf '%s\n' /tmp
+}

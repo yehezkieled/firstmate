@@ -37,7 +37,7 @@ SESSION=fmses
 RECOVER="$ROOT/bin/fm-restored-recover.sh"
 CONTROL="$ROOT/bin/fm-control.sh"
 
-# A relaunch writes per-task runtime directories under /tmp keyed by task id,
+# A relaunch writes per-task runtime directories keyed by task id,
 # so the relaunched task's id is unique to this run and its directories are
 # removed with the lab.
 OK_ID="ok-$$"
@@ -47,7 +47,7 @@ cleanup_all() {
   "$REAL_TMUX" -L "$SOCKET" kill-server >/dev/null 2>&1 || true
   [ -n "${LAB:-}" ] && fm_test_remove_tree "$LAB"
   for id in "$OK_ID" $LEASE_IDS; do
-    for d in "/tmp/fm-$id" "/tmp/fm-$id+"*; do
+    for d in "$(fm_test_task_tmp "$id")" "$(fm_test_task_tmp "$id")+"*; do
       [ -e "$d" ] && fm_test_remove_tree "$d"
     done
   done

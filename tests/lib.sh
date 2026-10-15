@@ -279,6 +279,18 @@ fm_test_tmproot() {
   printf '%s\n' "$root"
 }
 
+# Every spawn this suite drives keeps its fm-<id> task temp root and launch
+# namespace in a private per-script directory instead of the host-wide /tmp
+# (fm_task_tmp_base in bin/fm-control-lib.sh), so fixed fixture ids never
+# collide with a concurrent suite or with leftovers another user owns.
+# fm_test_task_tmp <id> names the task temp root a spawn of <id> creates.
+FM_TEST_TASK_TMP_BASE=$(fm_test_tmproot fm-tasktmp) || return 1
+export FM_TEST_TASK_TMP_BASE
+
+fm_test_task_tmp() {  # <id>
+  printf '%s/fm-%s\n' "$FM_TEST_TASK_TMP_BASE" "$1"
+}
+
 trap fm_test_cleanup EXIT
 trap 'fm_test_cleanup; exit 130' INT
 trap 'fm_test_cleanup; exit 143' TERM
